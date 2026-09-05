@@ -559,18 +559,33 @@ async function musicVideoFor(title, artist) {
     const found = response.data.results["music-videos"];
     if (!found) return null;
 
-    const wanted = String(artist || "").toLowerCase();
+    const song = bareTitle(title);
 
     const match = found.data.filter(video => {
       if (video.attributes.contentRating === "explicit") return false;
-      const by = video.attributes.artistName.toLowerCase();
-      return by === wanted || by.indexOf(wanted) !== -1 || wanted.indexOf(by) !== -1;
+
+      // Both checks are needed. The artist check alone was the original bug:
+      // a search for one song returns the band's whole video catalog, every
+      // one of them passes an artist-only test, and the first is whatever
+      // Apple ranks highest. That is how a request for Cats in the Cradle
+      // played I Hate Everything About You.
+      if (!sameArtist(video.attributes.artistName, artist)) return false;
+      return mentions(video.attributes.name, song);
     })[0];
 
     return match || null;
   } catch (error) {
     return null;
   }
+}
+
+
+/**
+ * Strips the bracketed extras Apple hangs off song titles, so a track called
+ * "Daughter (Remastered)" still matches a video called plainly "Daughter".
+ */
+function bareTitle(title) {
+  return String(title || "").replace(/[\(\[][^\)\]]*[\)\]]/g, " ").trim();
 }
 
 
@@ -691,7 +706,7 @@ async function pickVideo(candidates, title, artist, durationMs) {
     // The title has to actually name the song, and the artist has to appear
     // somewhere, either in the title or in the channel. That is what keeps a
     // stranger's unrelated upload out without demanding an official channel.
-    if (!mentions(name, title)) continue;
+    if (!mentions(name, bareTitle(title))) continue;
     if (!mentions(name, artist) && !sameArtist(channel, artist)) continue;
 
     const score = scoreVideo(video, artist, seconds, songSeconds);
