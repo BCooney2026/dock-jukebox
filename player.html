@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Dock Jukebox</title>
+<title>Cooney Provisions Video Jukebox</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Josefin+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -238,11 +238,13 @@
     justify-content: space-between;
     gap: 20px;
   }
-  .wordmark {
-    font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: clamp(20px, 2.6vh, 34px);
-    letter-spacing: 0.14em;
-    color: var(--amber);
+  /* The lockup, in place of the typed name. Wide rather than square, so it
+     takes the space the wordmark had. Sized by width; height follows. */
+  .wordmark { display: block; line-height: 0; }
+  .wordmark img {
+    width: clamp(150px, 19vh, 300px);
+    height: auto;
+    display: block;
   }
   .lamp {
     font-size: clamp(12px, 1.5vh, 16px);
@@ -421,7 +423,7 @@
     text-align: center;
     padding: 8vw;
   }
-  #start .wordmark { font-size: clamp(30px, 5vh, 56px); }
+  #start .wordmark img { width: clamp(240px, 34vh, 520px); }
   #start p { color: var(--dim); max-width: 34ch; line-height: 1.55; margin: 0; }
   #start button {
     font-family: 'Bebas Neue', system-ui, sans-serif;
@@ -481,7 +483,7 @@
 <div id="stage">
 
   <div class="bar">
-    <div class="wordmark">Cooney Provisions Jukebox</div>
+    <div class="wordmark"><img src="cp-music-tv.png" alt="Cooney Provisions Video Jukebox"></div>
     <div class="lamp" id="lamp"><i></i><span id="status">connecting</span></div>
   </div>
 
@@ -506,7 +508,7 @@
 <div id="debug"></div>
 
 <div id="start">
-  <div class="wordmark">Cooney Provisions Jukebox</div>
+  <div class="wordmark"><img src="cp-music-tv.png" alt="Cooney Provisions Video Jukebox"></div>
   <p>Press start, then leave this open. The screen can sleep. Closing this page stops the music.</p>
   <button id="startbtn">Start the jukebox</button>
 </div>
@@ -1341,7 +1343,7 @@ function sized(template, pixels) {
 document.addEventListener("musickitloaded", async () => {
   music = await MusicKit.configure({
     developerToken: DEVELOPER_TOKEN,
-    app: { name: "Dock Jukebox", build: "1.0.0" }
+    app: { name: "Cooney Provisions Video Jukebox", build: "1.0.0" }
   });
 
   // The start button is never skipped, even when already signed in. Pressing it
