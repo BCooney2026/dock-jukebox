@@ -111,6 +111,16 @@
     background: linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0));
     pointer-events: none;
   }
+  /* The title card and the up-next list occupy the same corner and cross-fade
+     between each other, so nothing on screen moves when the swap happens. */
+  .vleft { display: grid; min-width: 0; }
+  .vleft > * {
+    grid-area: 1 / 1;
+    align-self: end;
+    transition: opacity 0.9s ease;
+  }
+  .vleft > .hidden { opacity: 0; }
+
   .vtitle {
     font-family: 'Bebas Neue', system-ui, sans-serif;
     font-size: clamp(30px, 7vh, 86px);
@@ -120,6 +130,28 @@
     font-size: clamp(15px, 2.6vh, 30px);
     color: rgba(247,241,230,0.72);
   }
+
+  #vnext .head {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(13px, 1.8vh, 21px);
+    letter-spacing: 0.18em;
+    color: var(--amber);
+    margin-bottom: 6px;
+  }
+  #vnext .row {
+    display: flex;
+    gap: 10px;
+    font-size: clamp(14px, 2.2vh, 26px);
+    line-height: 1.45;
+  }
+  #vnext .row .n {
+    color: var(--amber);
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    min-width: 1.2em;
+  }
+  #vnext .row .who { color: rgba(247,241,230,0.55); }
+  #vnext .none { color: rgba(247,241,230,0.55); font-size: clamp(14px, 2.2vh, 26px); }
+
   .vcredit {
     font-family: 'Bebas Neue', system-ui, sans-serif;
     font-size: clamp(14px, 2vh, 24px);
@@ -370,9 +402,12 @@
   <div id="screen"></div>
   <div id="ytframe"><div id="ytmount"></div></div>
   <div id="videobar">
-    <div>
-      <div class="vtitle" id="vtitle"></div>
-      <div class="vartist" id="vartist"></div>
+    <div class="vleft">
+      <div id="vcard">
+        <div class="vtitle" id="vtitle"></div>
+        <div class="vartist" id="vartist"></div>
+      </div>
+      <div id="vnext" class="hidden"></div>
     </div>
     <div class="vcredit" id="vcredit"></div>
   </div>
@@ -448,7 +483,7 @@ const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKo";
 // is official, and a handful of genuinely official older videos were only ever
 // uploaded by fans, so they cannot pass. Pin those here.
 const VIDEO_OVERRIDES = {
-  "1714905027": "ZyaK3jo4Sl4"   // Punk Rock Girl, the real 1988 promo
+  // "1714905027": "ZyaK3jo4Sl4"   // Punk Rock Girl, the real 1988 promo
 };
 
 // Words in a YouTube title that mean it is not the official video. A rejected
@@ -461,6 +496,12 @@ const NOT_THE_VIDEO = [
   "in the style of", "fan video", "fan made", "fanmade", "fan edit",
   "unofficial", "montage", "my version", "made by", "amv"
 ];
+
+// How long the song title and artist stay on screen over a video before they
+// fade out and hand the corner over to the up-next list. MTV's music video
+// cards ran roughly eight to ten seconds, longer than a news lower third.
+// The requester's name is not affected and stays up for the whole song.
+const TITLE_SECONDS = 10;
 
 // How often to check the queue, in milliseconds.
 const POLL_MS = 4000;
@@ -1075,13 +1116,29 @@ function hideVideoElement() {
 }
 
 
+// Cancels the pending title-card fade when a new song starts before the old
+// one has finished fading, which would otherwise leave two timers racing.
+let titleTimer = null;
+
 function showVideoStage(on, title, artist, by) {
   el("videostage").classList.toggle("on", on);
+
+  clearTimeout(titleTimer);
   if (!on) return;
 
   el("vtitle").textContent = title;
   el("vartist").textContent = artist || "";
   el("vcredit").textContent = by ? "Requested by " + by : "";
+
+  // Every song starts with the title card up and the queue hidden, then swaps
+  // them. They sit in the same grid cell, so the swap moves nothing.
+  el("vcard").classList.remove("hidden");
+  el("vnext").classList.add("hidden");
+
+  titleTimer = setTimeout(() => {
+    el("vcard").classList.add("hidden");
+    el("vnext").classList.remove("hidden");
+  }, TITLE_SECONDS * 1000);
 }
 
 
@@ -1391,7 +1448,57 @@ function paintProgress() {
   el("progress").style.width = percent + "%";
 }
 
+/**
+ * The short up-next list that appears over a video once the title card fades.
+ *
+ * It reads the same list the cards below use, which is already in fair-rotation
+ * order from the API, so what is shown here is genuinely the order things will
+ * play in. It is not sorted or trimmed differently on purpose.
+ */
+function paintVideoNext(waiting) {
+  const box = el("vnext");
+  const upcoming = waiting.slice(1, 4);
+
+  box.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.className = "head";
+  head.textContent = "Up next";
+  box.appendChild(head);
+
+  if (upcoming.length === 0) {
+    const none = document.createElement("div");
+    none.className = "none";
+    none.textContent = "Nothing else queued.";
+    box.appendChild(none);
+    return;
+  }
+
+  upcoming.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const number = document.createElement("span");
+    number.className = "n";
+    number.textContent = index + 1;
+
+    const text = document.createElement("span");
+    const song = document.createElement("b");
+    song.textContent = item.Title;
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = "  " + item.RequestedBy;
+    text.append(song, who);
+
+    row.append(number, text);
+    box.appendChild(row);
+  });
+}
+
+
 function paintQueue(waiting) {
+  paintVideoNext(waiting);
+
   const cards = el("cards");
   const upcoming = waiting.slice(1, 5);
 
