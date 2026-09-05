@@ -381,13 +381,15 @@
 <div id="gate">
   <div class="gatehead">
     <div class="wordmark">Cooney Provisions Jukebox</div>
-    <p>Tap your name to start.</p>
+    <p>Sign in with your work account to request a song.</p>
   </div>
   <div class="gatelist" id="gatelist">
-    <div class="note">Loading the crew</div>
+    <div id="gbutton"></div>
+    <div class="note" id="gatenote">Loading sign in</div>
   </div>
 </div>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 // ---------------------------------------------------------------------------
 // Settings
@@ -401,18 +403,21 @@ const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJ
 // How often the queue refreshes, in milliseconds.
 const REFRESH_MS = 8000;
 
+// Sign in with Google. Public by design: a client ID only works from the
+// origin authorised alongside it in the Cloud console, and every token it
+// produces is checked by the API before a song is queued.
+const CLIENT_ID =
+  "620655950528-p29lv5tojefgeeuqlkdv5l3vt3h0aeu0.apps.googleusercontent.com";
+
 // ---------------------------------------------------------------------------
 
 const el = id => document.getElementById(id);
 
-// Who is signed in on this phone, taken from the identity map.
+// Who this is. The token is issued by Google and checked by the API, so the
+// name attached to a request is not something this page gets to decide.
 let me = null;
-try {
-  me = JSON.parse(localStorage.getItem("jukeboxUser") || "null");
-} catch (error) {
-  me = null;
-}
-let userName = me ? me.nickname : "";
+let userName = "";
+let idToken = sessionStorage.getItem("jukeboxToken") || "";
 
 // This phone's public address, checked against the shop's before queueing.
 let myAddress = null;
@@ -573,7 +578,7 @@ async function queueSong(song, button) {
       songId: song.id,
       title: song.attributes.name,
       artist: song.attributes.artistName,
-      by: userName,
+      idToken: idToken,
       from: myAddress || "",
       explicit: song.attributes.contentRating === "explicit" ? "true" : "false"
     });
@@ -694,69 +699,115 @@ el("term").addEventListener("keydown", event => {
 
 
 // ---------------------------------------------------------------------------
-// Sign in, from the employee identity map
+// Sign in with Google
+//
+// There is no list of names to pick from any more, and that is the whole
+// point. While the name was chosen on the phone, anybody could queue a song
+// as somebody else and walk straight past the three-song limit and the fair
+// rotation. Now the phone sends a token signed by Google and the API decides
+// whose name goes on the request.
 // ---------------------------------------------------------------------------
 
 function showSignedAs() {
-  el("signedas").textContent = userName ? userName : "";
+  el("signedas").textContent = userName || "";
 }
 
-/** Builds the tap-your-name list. One flat list, alphabetical by nickname. */
-async function loadPeople() {
-  const list = el("gatelist");
+
+function showGate(note) {
+  el("gate").style.display = "flex";
+  el("gatenote").textContent = note || "";
+}
+
+
+/** Google hands us a signed token here after somebody signs in. */
+function onCredential(response) {
+  idToken = response.credential || "";
+  sessionStorage.setItem("jukeboxToken", idToken);
+  identify();
+}
+
+
+/**
+ * Asks the API who this token belongs to.
+ *
+ * The answer, not the token, is what the page displays. If the API will not
+ * vouch for it, the gate goes back up rather than the page guessing.
+ */
+async function identify() {
+  if (!idToken) {
+    showGate("");
+    return;
+  }
 
   let result;
   try {
-    result = await api("getPeople");
+    result = await api("whoAmI", { idToken: idToken });
   } catch (error) {
-    list.innerHTML = '<div class="note warn">Could not load the crew list.</div>';
+    showGate("Could not reach the jukebox. Try again in a moment.");
     return;
   }
 
-  if (!result.ok) {
-    list.innerHTML = '<div class="note warn">' + result.error + "</div>";
+  if (!result.ok || !result.person) {
+    // Either the token has expired or this account is not on the list. Both
+    // are fixed by signing in again, and the second needs the office.
+    idToken = "";
+    sessionStorage.removeItem("jukeboxToken");
+    showGate(result.error || "Sign in again to keep requesting.");
     return;
   }
 
-  list.innerHTML = "";
-
-  result.people.forEach(person => {
-    const button = document.createElement("button");
-    button.className = "person";
-
-    const text = document.createElement("div");
-    const nick = document.createElement("b");
-    nick.textContent = person.nickname;
-    const full = document.createElement("span");
-    full.textContent = person.fullName;
-    text.append(nick, full);
-
-    button.append(text);
-    button.addEventListener("click", () => signIn(person));
-    list.appendChild(button);
-  });
-}
-
-function signIn(person) {
-  me = person;
-  userName = person.nickname;
-  localStorage.setItem("jukeboxUser", JSON.stringify(person));
+  me = result.person;
+  userName = me.nickname;
   el("gate").style.display = "none";
   showSignedAs();
   loadQueue();
 }
 
+
+/** Draws the Google button once its library has finished loading. */
+function startSignIn() {
+  if (!window.google || !google.accounts || !google.accounts.id) {
+    setTimeout(startSignIn, 300);
+    return;
+  }
+
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID,
+    callback: onCredential,
+    auto_select: true
+  });
+
+  google.accounts.id.renderButton(el("gbutton"), {
+    theme: "filled_black",
+    size: "large",
+    text: "signin_with",
+    shape: "pill"
+  });
+
+  el("gatenote").textContent = "";
+
+  // Tokens last about an hour. Signing in again is one tap when the browser
+  // still has the session, so this is not the interruption it sounds like.
+  if (!idToken) google.accounts.id.prompt();
+}
+
+
+// Tapping the name in the corner signs out, which is the only way to hand the
+// phone to somebody else.
 el("signedas").addEventListener("click", () => {
-  el("gate").style.display = "flex";
-  loadPeople();
+  idToken = "";
+  me = null;
+  userName = "";
+  sessionStorage.removeItem("jukeboxToken");
+  if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
+  showSignedAs();
+  showGate("Signed out.");
 });
 
-if (userName) {
-  el("gate").style.display = "none";
-  showSignedAs();
-} else {
-  loadPeople();
-}
+
+startSignIn();
+identify();
+
 
 /**
  * Blocks queueing from anywhere but the shop network. The queue stays visible
