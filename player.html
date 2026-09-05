@@ -544,7 +544,7 @@ const PLAY_VIDEOS = true;
 // This key is restricted in the Google Cloud console to requests coming from
 // this site, which is why it can sit in public page source the same way the
 // Apple token does. Leave it blank to turn the YouTube fallback off entirely.
-const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKo";
+const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKoE";
 
 // Songs where the automatic search gets it wrong. The key is the Apple song
 // ID, which appears in the queue sheet and in the ?debug=1 strip. The value is
@@ -1447,6 +1447,13 @@ async function playSong(songId, title, artist, by) {
 
   paintNowPlaying(title, artist, by);
   paintArtwork(sized(details.artwork, 900));
+
+  // Reported back so the house rotation can name the station without erasing
+  // which of the three paths actually ran. That status line is the fastest way
+  // to tell a video failure from a station failure.
+  if (video) return "video";
+  if (backup) return "video from YouTube";
+  return "no video";
 }
 
 
@@ -1627,8 +1634,8 @@ async function playHouse() {
   trackFinished = false;
 
   try {
-    await playSong(track.id, track.title, track.artist, "");
-    setStatus(houseStationName, true);
+    const how = await playSong(track.id, track.title, track.artist, "");
+    setStatus(houseStationName + ", " + how, true);
   } catch (error) {
     // One bad track should not stall the rotation. Drop it and let the next
     // tick take the one after it.
