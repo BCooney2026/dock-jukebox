@@ -530,6 +530,20 @@ const HOLIDAY_STATIONS = [
   "christmas classics", "holiday hits", "christmas oldies"
 ];
 
+// Skip station tracks that have no Apple music video, so the wall is showing
+// something rather than a still of the album sleeve between requests.
+//
+// Screening is done against Apple only, never YouTube. Google allows about a
+// hundred searches a day, and screening a station through it would spend the
+// whole allowance before lunch and leave none for actual requests.
+//
+// Set to false and the rotation plays everything, video or not.
+const HOUSE_VIDEOS_ONLY = true;
+
+// How many tracks to look at before giving up and playing one without a video.
+// Stops a station of obscure material spinning through a hundred lookups.
+const HOUSE_VIDEO_TRIES = 15;
+
 // When the holiday rotation takes over, inclusive. Month then day.
 // The window is allowed to run across the end of the year.
 const HOLIDAY_FROM = { month: 11, day: 25 };
@@ -544,7 +558,7 @@ const PLAY_VIDEOS = true;
 // This key is restricted in the Google Cloud console to requests coming from
 // this site, which is why it can sit in public page source the same way the
 // Apple token does. Leave it blank to turn the YouTube fallback off entirely.
-const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKoE";
+const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKo";
 
 // Songs where the automatic search gets it wrong. The key is the Apple song
 // ID, which appears in the queue sheet and in the ?debug=1 strip. The value is
@@ -641,13 +655,28 @@ async function api(action, params) {
   try {
     const response = await fetch(url, { cache: "no-store" });
     const body = await response.text();
-    debugLine(action + " -> HTTP " + response.status + " " + body.slice(0, 400));
+    debugLine(action + " -> HTTP " + response.status + " " + safeToShow(body));
     return JSON.parse(body);
   } catch (error) {
     debugLine(action + " -> FAILED " + error.message);
     setStatus("cannot reach the queue");
     return null;
   }
+}
+
+
+/**
+ * Trims an API response for the diagnostics strip and takes the banned word
+ * list out of it.
+ *
+ * That list arrives with every single queue answer, so without this the strip
+ * is a wall of slurs on a screen wired to the warehouse wall. The words still
+ * do their job, they are just never drawn.
+ */
+function safeToShow(body) {
+  return String(body)
+    .replace(/"banned":\[[^\]]*\]/g, '"banned":[filtered word list]')
+    .slice(0, 400);
 }
 
 /**
@@ -681,7 +710,22 @@ async function publicAddress() {
  * have one. Matches on artist so a cover version does not sneak in, and skips
  * anything explicit for the same reason the audio side does.
  */
+// Apple video lookups are memoised. The house rotation screens tracks by
+// asking for their video before deciding to play them, and without this every
+// track would be searched twice: once to screen it, once to play it.
+const appleVideoMemo = new Map();
+
 async function musicVideoFor(title, artist) {
+  const key = title + "|" + artist;
+  if (appleVideoMemo.has(key)) return appleVideoMemo.get(key);
+
+  const found = await findMusicVideo(title, artist);
+  appleVideoMemo.set(key, found);
+  return found;
+}
+
+
+async function findMusicVideo(title, artist) {
   try {
     const response = await music.api.music("/v1/catalog/us/search", {
       term: title + " " + artist,
@@ -1606,6 +1650,41 @@ async function stationTracks(playlistId) {
 }
 
 
+/**
+ * The next station track worth playing.
+ *
+ * With HOUSE_VIDEOS_ONLY on, tracks with no Apple music video are skipped, so
+ * the wall keeps showing pictures between requests instead of album sleeves.
+ * The lookups are memoised, so a track screened here costs nothing when it is
+ * played a moment later, and nothing again the next time the station comes up.
+ *
+ * After HOUSE_VIDEO_TRIES misses it gives up and plays the next one regardless.
+ * A station full of obscure material should sound like something rather than
+ * search forever and leave the dock silent.
+ */
+async function nextHouseTrack() {
+  if (!HOUSE_VIDEOS_ONLY || !PLAY_VIDEOS) {
+    return houseQueue.shift() || null;
+  }
+
+  let looked = 0;
+
+  while (houseQueue.length > 0 && looked < HOUSE_VIDEO_TRIES) {
+    const track = houseQueue.shift();
+    looked++;
+
+    const video = await musicVideoFor(track.title, track.artist);
+    if (video) return track;
+  }
+
+  if (looked >= HOUSE_VIDEO_TRIES) {
+    debugLine("no videos in the last " + looked + " station tracks, playing anyway");
+  }
+
+  return houseQueue.shift() || null;
+}
+
+
 /** Falls back to the house rotation so the dock is never silent. */
 async function playHouse() {
   if (houseQueue.length === 0) {
@@ -1629,7 +1708,19 @@ async function playHouse() {
     return;
   }
 
-  const track = houseQueue.shift();
+  const track = await nextHouseTrack();
+
+  if (!track) {
+    houseTrack = null;
+    showVideoStage(false);
+    paintNowPlaying("Nothing playing", "", "");
+    paintArtwork(null);
+    if (!playbackError) {
+      setStatus("waiting for requests", true);
+    }
+    return;
+  }
+
   houseTrack = track;
   trackFinished = false;
 
