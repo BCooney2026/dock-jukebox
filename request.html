@@ -3,193 +3,405 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0c0a09">
 <title>Dock Jukebox</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --walnut: #16120f;
-    --panel: #221b16;
-    --line: #3a2e25;
-    --amber: #ff9d2e;
-    --cream: #f2e9dc;
-    --muted: #8a7a6b;
+    --ink: #0c0a09;
+    --panel: #17130f;
+    --line: rgba(247,241,230,0.10);
+    --amber: #ffa62b;
+    --cream: #f7f1e6;
+    --dim: rgba(247,241,230,0.48);
+    --nav: 62px;
+    --mini: 66px;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-  body {
+  html, body {
     margin: 0;
-    background: var(--walnut);
+    background: var(--ink);
     color: var(--cream);
     font-family: Barlow, system-ui, sans-serif;
     font-size: 17px;
-    padding: env(safe-area-inset-top) 0 40px;
+    overscroll-behavior-y: none;
   }
+
+  /* ---- Top bar ---------------------------------------------------------- */
 
   header {
-    padding: 20px 20px 14px;
-    border-bottom: 1px solid var(--line);
     position: sticky;
     top: 0;
-    background: var(--walnut);
-    z-index: 5;
+    z-index: 8;
+    background: var(--ink);
+    padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+    border-bottom: 1px solid var(--line);
   }
-
-  h1 {
-    font-family: 'Barlow Condensed', system-ui, sans-serif;
-    font-weight: 600;
-    font-size: 30px;
-    letter-spacing: 0.02em;
-    margin: 0 0 12px;
+  .wordmark {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 22px;
+    letter-spacing: 0.14em;
+    color: var(--amber);
   }
-
+  .topline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
   .search {
     display: flex;
     gap: 8px;
   }
-
   input {
     flex: 1;
+    min-width: 0;
     font: inherit;
-    padding: 13px 14px;
+    padding: 13px 15px;
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 3px;
+    border-radius: 10px;
     color: var(--cream);
   }
-  input::placeholder { color: var(--muted); }
+  input::placeholder { color: var(--dim); }
   input:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
 
-  button {
-    font-family: 'Barlow Condensed', system-ui, sans-serif;
+  .go {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
     font-size: 19px;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
     padding: 0 20px;
     background: var(--amber);
-    color: var(--walnut);
+    color: var(--ink);
     border: none;
-    border-radius: 3px;
-    cursor: pointer;
+    border-radius: 10px;
   }
 
-  .message {
-    padding: 14px 20px;
-    color: var(--amber);
-    font-size: 16px;
+  /* ---- Panes ------------------------------------------------------------ */
+
+  main {
+    padding-bottom: calc(var(--nav) + var(--mini) + env(safe-area-inset-bottom));
   }
+  .pane { display: none; }
+  .pane.on { display: block; }
+
+  .note {
+    padding: 14px 16px;
+    color: var(--dim);
+  }
+  .note.warn { color: var(--amber); }
 
   ul { list-style: none; margin: 0; padding: 0; }
+
+  /* ---- Song rows -------------------------------------------------------- */
 
   li.song {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 11px 20px;
+    gap: 13px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--line);
   }
-
   li.song img {
-    width: 54px;
-    height: 54px;
-    border-radius: 3px;
+    width: 56px;
+    height: 56px;
+    border-radius: 5px;
     background: var(--panel);
     flex-shrink: 0;
   }
-
   .meta { flex: 1; min-width: 0; }
   .meta b {
     display: block;
-    font-weight: 500;
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .meta span {
-    color: var(--muted);
+    display: block;
+    color: var(--dim);
     font-size: 15px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: block;
   }
 
-  .add {
-    width: 46px;
-    height: 46px;
-    padding: 0;
-    font-size: 26px;
-    line-height: 1;
+  .play {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 17px;
+    letter-spacing: 0.09em;
+    padding: 9px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--amber);
+    background: transparent;
+    color: var(--amber);
     flex-shrink: 0;
   }
-  .add.done { background: var(--panel); color: var(--muted); }
+  .play.done {
+    background: var(--amber);
+    color: var(--ink);
+    border-color: var(--amber);
+  }
+  .play:disabled { opacity: 0.5; }
 
-  section.queue {
-    margin-top: 28px;
-    border-top: 1px solid var(--line);
-    padding-top: 18px;
-  }
-  section.queue h2 {
-    font-family: 'Barlow Condensed', system-ui, sans-serif;
-    font-size: 15px;
-    letter-spacing: 0.12em;
-    color: var(--muted);
-    font-weight: 400;
-    margin: 0 0 10px;
-    padding: 0 20px;
-  }
-  li.queued {
-    padding: 9px 20px;
-    border-bottom: 1px solid var(--line);
+  /* ---- Queue pane ------------------------------------------------------- */
+
+  .nowcard {
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 15px;
+    align-items: center;
+    padding: 18px 16px;
+    border-bottom: 1px solid var(--line);
   }
-  li.queued span { color: var(--muted); font-size: 15px; }
-  .empty { padding: 4px 20px 0; color: var(--muted); }
+  .nowcard img {
+    width: 84px;
+    height: 84px;
+    border-radius: 6px;
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  .nowcard .eyebrow {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 14px;
+    letter-spacing: 0.22em;
+    color: var(--amber);
+  }
+  .nowcard b { display: block; font-size: 21px; font-weight: 600; }
+  .nowcard span { color: var(--dim); }
 
-  #nameprompt {
+  .sectionhead {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.22em;
+    color: var(--dim);
+    padding: 16px 16px 8px;
+  }
+
+  li.queued {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  li.queued .pos {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 22px;
+    color: var(--dim);
+    width: 28px;
+    flex-shrink: 0;
+    text-align: center;
+  }
+  li.queued img {
+    width: 46px;
+    height: 46px;
+    border-radius: 4px;
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  li.queued.mine { background: rgba(255,166,43,0.07); }
+  li.queued.mine .pos { color: var(--amber); }
+  .who { color: var(--amber); font-size: 15px; }
+
+  /* ---- Mini player ------------------------------------------------------ */
+
+  #mini {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--nav) + env(safe-area-inset-bottom));
+    height: var(--mini);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    z-index: 9;
+  }
+  #mini img {
+    width: 44px;
+    height: 44px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.06);
+    flex-shrink: 0;
+  }
+  #mini .meta b { font-size: 16px; }
+  #mini .meta span { font-size: 14px; }
+  #minicount {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+    flex-shrink: 0;
+  }
+  #minibar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 2px;
+    width: 0%;
+    background: var(--amber);
+  }
+
+  /* ---- Bottom nav ------------------------------------------------------- */
+
+  nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--nav) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    display: flex;
+    background: var(--ink);
+    border-top: 1px solid var(--line);
+    z-index: 10;
+  }
+  nav button {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 17px;
+    letter-spacing: 0.14em;
+  }
+  nav button.on { color: var(--amber); }
+
+  /* ---- Name gate -------------------------------------------------------- */
+
+  #gate {
     position: fixed;
     inset: 0;
-    background: var(--walnut);
+    background: var(--ink);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 18px;
-    padding: 30px;
-    z-index: 20;
+    z-index: 30;
   }
-  #nameprompt input { max-width: 320px; text-align: center; }
-  #nameprompt button { padding: 14px 36px; }
+  .gatehead {
+    padding: max(24px, env(safe-area-inset-top)) 20px 16px;
+    text-align: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .gatehead .wordmark { font-size: 30px; margin-bottom: 6px; }
+  .gatehead p { color: var(--dim); margin: 0; }
+  .gatelist {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .deptline {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.22em;
+    color: var(--dim);
+    padding: 18px 20px 8px;
+  }
+  .person {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    text-align: left;
+    padding: 15px 20px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    color: var(--cream);
+    font: inherit;
+  }
+  .person .badge {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 17px;
+    letter-spacing: 0.06em;
+    color: var(--amber);
+    border: 1px solid rgba(255,166,43,0.45);
+    border-radius: 6px;
+    padding: 3px 9px;
+    flex-shrink: 0;
+    min-width: 52px;
+    text-align: center;
+  }
+  .person .badge.blank { opacity: 0.35; }
+  .person b { font-weight: 600; font-size: 19px; }
+  .person span { display: block; color: var(--dim); font-size: 15px; }
+
+  .signedas {
+    font-size: 14px;
+    color: var(--dim);
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Dock Jukebox</h1>
+  <div class="topline">
+    <div class="wordmark">Cooney Provisions Jukebox</div>
+    <button class="signedas" id="signedas"></button>
+  </div>
   <div class="search">
-    <input id="term" placeholder="Search for a song" enterkeyhint="search">
-    <button id="go">Search</button>
+    <input id="term" placeholder="Search songs or artists" enterkeyhint="search">
+    <button class="go" id="go">Search</button>
   </div>
 </header>
 
-<div class="message" id="message"></div>
+<main>
+  <div class="pane on" id="pane-play">
+    <div class="note" id="message">Search for something and hit Play to put it on the dock speakers.</div>
+    <ul id="results"></ul>
+  </div>
 
-<ul id="results"></ul>
+  <div class="pane" id="pane-queue">
+    <div class="nowcard" id="nowcard">
+      <img id="nowart" alt="">
+      <div class="meta">
+        <div class="eyebrow">Now playing</div>
+        <b id="nowtitle">Nothing playing</b>
+        <span id="nowartist"></span>
+      </div>
+    </div>
+    <div class="sectionhead">Up next</div>
+    <ul id="queue"></ul>
+    <div class="note" id="queueempty">Nothing in line. Go pick something.</div>
+  </div>
+</main>
 
-<section class="queue">
-  <h2>Coming up</h2>
-  <ul id="queue"></ul>
-  <p class="empty" id="empty">Nothing queued. Pick something.</p>
-</section>
+<div id="mini">
+  <div id="minibar"></div>
+  <img id="miniart" alt="">
+  <div class="meta">
+    <b id="minititle">Nothing playing</b>
+    <span id="minisub">Tap to see the queue</span>
+  </div>
+  <div id="minicount"></div>
+</div>
 
-<div id="nameprompt">
-  <p>Who are you? This shows up next to your songs.</p>
-  <input id="nameinput" placeholder="First name" autocapitalize="words">
-  <button id="namesave">Start</button>
+<nav>
+  <button class="on" id="tab-play">Play</button>
+  <button id="tab-queue">Queue</button>
+</nav>
+
+<div id="gate">
+  <div class="gatehead">
+    <div class="wordmark">Cooney Provisions Jukebox</div>
+    <p>Tap your name to start.</p>
+  </div>
+  <div class="gatelist" id="gatelist">
+    <div class="note">Loading the crew</div>
+  </div>
 </div>
 
 <script>
@@ -202,13 +414,25 @@ const API_URL = "https://script.google.com/a/macros/cooneyprovisions.com/s/AKfyc
 // Developer token from make_music_token.py. Expires March 6, 2027.
 const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJVOTY4TVdaSjhUIiwiaWF0IjoxNzg4NTY5OTIyLCJleHAiOjE4MDQzNDY5MjJ9.gO46sv13ANw3wBn7jodVOBEKpjgfdUEpWfvpCV254YFTbX-_TPYbxJTxo2XVFEYAZdyu_Obm8girpiJvTBal3g";
 
+// How often the queue refreshes, in milliseconds.
+const REFRESH_MS = 8000;
+
 // ---------------------------------------------------------------------------
 
 const el = id => document.getElementById(id);
-let userName = localStorage.getItem("jukeboxName") || "";
 
-function message(text) {
+// Who is signed in on this phone, taken from the identity map.
+let me = null;
+try {
+  me = JSON.parse(localStorage.getItem("jukeboxUser") || "null");
+} catch (error) {
+  me = null;
+}
+let userName = me ? me.nickname : "";
+
+function message(text, warn) {
   el("message").textContent = text || "";
+  el("message").classList.toggle("warn", !!warn);
 }
 
 /** Calls the Apps Script API. */
@@ -217,135 +441,298 @@ async function api(action, params) {
   url.searchParams.set("action", action);
   Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
 
-  // Browsers cache repeated GETs to the same address. Without this the player
-  // replays the first answer forever and never sees a new request.
+  // Without a unique address the browser replays its cached answer forever.
   url.searchParams.set("nocache", Date.now() + "" + Math.random());
 
   const response = await fetch(url, { cache: "no-store" });
   return await response.json();
 }
 
-/** Searches the Apple Music catalog. Needs no sign-in, just the token. */
-async function search(term) {
-  const url = "https://api.music.apple.com/v1/catalog/us/search"
-    + "?term=" + encodeURIComponent(term)
-    + "&types=songs&limit=20";
-
-  const response = await fetch(url, {
-    headers: { Authorization: "Bearer " + DEVELOPER_TOKEN }
-  });
-
-  if (!response.ok) throw new Error("Search is down right now.");
-
-  const data = await response.json();
-  return data.results.songs ? data.results.songs.data : [];
+/** Turns Apple's artwork template into a real URL at the size we want. */
+function sized(template, pixels) {
+  if (!template) return "";
+  return template.replace("{w}", pixels).replace("{h}", pixels);
 }
+
+/** Looks up album art for a song already in the queue. */
+async function artworkFor(songId) {
+  try {
+    const response = await fetch(
+      "https://api.music.apple.com/v1/catalog/us/songs/" + songId,
+      { headers: { Authorization: "Bearer " + DEVELOPER_TOKEN } }
+    );
+    const data = await response.json();
+    return data.data[0].attributes.artwork.url;
+  } catch (error) {
+    return null;
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
 
 async function runSearch() {
   const term = el("term").value.trim();
   if (!term) return;
 
-  message("Searching...");
+  el("term").blur();
+  message("Searching");
   el("results").innerHTML = "";
 
   try {
-    const songs = await search(term);
+    const response = await fetch(
+      "https://api.music.apple.com/v1/catalog/us/search"
+        + "?term=" + encodeURIComponent(term) + "&types=songs&limit=25",
+      { headers: { Authorization: "Bearer " + DEVELOPER_TOKEN } }
+    );
+
+    if (!response.ok) throw new Error("Search is not answering right now.");
+
+    const data = await response.json();
+    const songs = data.results.songs ? data.results.songs.data : [];
+
     message(songs.length ? "" : "Nothing found for " + term);
     songs.forEach(showSong);
   } catch (error) {
-    message(error.message);
+    message(error.message, true);
   }
 }
 
 function showSong(song) {
-  const art = song.attributes.artwork.url
-    .replace("{w}", "108").replace("{h}", "108");
-
   const li = document.createElement("li");
   li.className = "song";
 
-  li.innerHTML =
-    '<img src="' + art + '" alt="" loading="lazy">' +
-    '<div class="meta"><b></b><span></span></div>';
+  const img = document.createElement("img");
+  img.src = sized(song.attributes.artwork.url, 112);
+  img.loading = "lazy";
+  img.alt = "";
 
-  li.querySelector("b").textContent = song.attributes.name;
-  li.querySelector("span").textContent = song.attributes.artistName;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  const name = document.createElement("b");
+  name.textContent = song.attributes.name;
+  const artist = document.createElement("span");
+  artist.textContent = song.attributes.artistName;
+  meta.append(name, artist);
 
   const button = document.createElement("button");
-  button.className = "add";
-  button.textContent = "+";
+  button.className = "play";
+  button.textContent = "Play";
   button.addEventListener("click", () => queueSong(song, button));
 
-  li.appendChild(button);
+  li.append(img, meta, button);
   el("results").appendChild(li);
 }
 
 async function queueSong(song, button) {
   button.disabled = true;
+  button.textContent = "Adding";
 
-  const result = await api("addSong", {
-    songId: song.id,
-    title: song.attributes.name,
-    artist: song.attributes.artistName,
-    by: userName
-  });
+  try {
+    const result = await api("addSong", {
+      songId: song.id,
+      title: song.attributes.name,
+      artist: song.attributes.artistName,
+      by: userName
+    });
 
-  if (result.ok) {
-    button.textContent = "\u2713";
-    button.classList.add("done");
-    message("");
-    loadQueue();
-  } else {
+    if (result.ok) {
+      button.textContent = "In line";
+      button.classList.add("done");
+      message("");
+      loadQueue();
+    } else {
+      button.disabled = false;
+      button.textContent = "Play";
+      message(result.error, true);
+    }
+  } catch (error) {
     button.disabled = false;
-    message(result.error);
+    button.textContent = "Play";
+    message("Could not reach the jukebox.", true);
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Queue
+// ---------------------------------------------------------------------------
+
 async function loadQueue() {
-  const state = await api("getQueue");
+  let state;
+  try {
+    state = await api("getQueue");
+  } catch (error) {
+    return;
+  }
+  if (!state || !state.ok) return;
+
+  paintNow(state.playing);
+  paintQueue(state.waiting);
+}
+
+async function paintNow(playing) {
+  const title = playing ? playing.Title : "Nothing playing";
+  const artist = playing ? playing.Artist : "";
+
+  el("nowtitle").textContent = title;
+  el("nowartist").textContent = artist;
+  el("minititle").textContent = title;
+
+  const art = playing
+    ? sized(await artworkFor(String(playing.SongID).trim()), 200)
+    : "";
+  el("nowart").src = art;
+  el("miniart").src = art;
+}
+
+function paintQueue(waiting) {
   const list = el("queue");
   list.innerHTML = "";
 
-  const items = [];
-  if (state.playing) items.push(state.playing);
-  state.waiting.forEach(item => items.push(item));
+  el("queueempty").style.display = waiting.length ? "none" : "block";
+  el("minicount").textContent = waiting.length
+    ? waiting.length + (waiting.length === 1 ? " in line" : " in line")
+    : "";
 
-  el("empty").style.display = items.length ? "none" : "block";
+  const mine = waiting.filter(item => item.RequestedBy === userName);
+  el("minisub").textContent = mine.length
+    ? "Your song is #" + (waiting.indexOf(mine[0]) + 1) + " in line"
+    : "Tap to see the queue";
 
-  items.slice(0, 12).forEach(item => {
+  waiting.forEach(async (item, index) => {
     const li = document.createElement("li");
-    li.className = "queued";
-    const title = document.createElement("div");
-    title.textContent = item.Title;
+    li.className = "queued" + (item.RequestedBy === userName ? " mine" : "");
+
+    const pos = document.createElement("div");
+    pos.className = "pos";
+    pos.textContent = index + 1;
+
+    const img = document.createElement("img");
+    img.alt = "";
+    artworkFor(String(item.SongID).trim()).then(template => {
+      img.src = sized(template, 108);
+    });
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const name = document.createElement("b");
+    name.textContent = item.Title;
     const who = document.createElement("span");
+    who.className = "who";
     who.textContent = item.RequestedBy;
-    li.append(title, who);
+    meta.append(name, who);
+
+    li.append(pos, img, meta);
     list.appendChild(li);
   });
 }
 
-// Name prompt on first visit only.
-if (userName) {
-  el("nameprompt").style.display = "none";
-} else {
-  el("nameinput").focus();
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+
+function showPane(which) {
+  el("pane-play").classList.toggle("on", which === "play");
+  el("pane-queue").classList.toggle("on", which === "queue");
+  el("tab-play").classList.toggle("on", which === "play");
+  el("tab-queue").classList.toggle("on", which === "queue");
+  window.scrollTo(0, 0);
 }
 
-el("namesave").addEventListener("click", () => {
-  const value = el("nameinput").value.trim();
-  if (!value) return;
-  userName = value;
-  localStorage.setItem("jukeboxName", value);
-  el("nameprompt").style.display = "none";
-});
+el("tab-play").addEventListener("click", () => showPane("play"));
+el("tab-queue").addEventListener("click", () => showPane("queue"));
+el("mini").addEventListener("click", () => showPane("queue"));
 
 el("go").addEventListener("click", runSearch);
-el("term").addEventListener("keydown", e => {
-  if (e.key === "Enter") runSearch();
+el("term").addEventListener("keydown", event => {
+  if (event.key === "Enter") runSearch();
 });
 
+
+// ---------------------------------------------------------------------------
+// Sign in, from the employee identity map
+// ---------------------------------------------------------------------------
+
+function showSignedAs() {
+  el("signedas").textContent = userName ? userName : "";
+}
+
+/** Builds the tap-your-name list, grouped by department. */
+async function loadPeople() {
+  const list = el("gatelist");
+
+  let result;
+  try {
+    result = await api("getPeople");
+  } catch (error) {
+    list.innerHTML = '<div class="note warn">Could not load the crew list.</div>';
+    return;
+  }
+
+  if (!result.ok) {
+    list.innerHTML = '<div class="note warn">' + result.error + "</div>";
+    return;
+  }
+
+  list.innerHTML = "";
+  let lastDept = null;
+
+  result.people.forEach(person => {
+    if (person.dept !== lastDept) {
+      const head = document.createElement("div");
+      head.className = "deptline";
+      head.textContent = person.dept;
+      list.appendChild(head);
+      lastDept = person.dept;
+    }
+
+    const button = document.createElement("button");
+    button.className = "person";
+
+    const badge = document.createElement("div");
+    badge.className = "badge" + (person.truck ? "" : " blank");
+    badge.textContent = person.truck || "—";
+
+    const text = document.createElement("div");
+    const nick = document.createElement("b");
+    nick.textContent = person.nickname;
+    const full = document.createElement("span");
+    full.textContent = person.fullName;
+    text.append(nick, full);
+
+    button.append(badge, text);
+    button.addEventListener("click", () => signIn(person));
+    list.appendChild(button);
+  });
+}
+
+function signIn(person) {
+  me = person;
+  userName = person.nickname;
+  localStorage.setItem("jukeboxUser", JSON.stringify(person));
+  el("gate").style.display = "none";
+  showSignedAs();
+  loadQueue();
+}
+
+el("signedas").addEventListener("click", () => {
+  el("gate").style.display = "flex";
+  loadPeople();
+});
+
+if (userName) {
+  el("gate").style.display = "none";
+  showSignedAs();
+} else {
+  loadPeople();
+}
+
 loadQueue();
-setInterval(loadQueue, 10000);
+setInterval(loadQueue, REFRESH_MS);
 </script>
 
 </body>
