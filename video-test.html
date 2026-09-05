@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Jukebox feasibility test</title>
+<style>
+  body {
+    margin: 0;
+    padding: 22px;
+    background: #0c0a09;
+    color: #f7f1e6;
+    font: 16px/1.5 system-ui, sans-serif;
+  }
+  h1 { font-size: 21px; margin: 0 0 6px; }
+  p.lead { color: rgba(247,241,230,0.5); margin: 0 0 18px; max-width: 62ch; }
+  .row { display: flex; gap: 8px; margin-bottom: 16px; max-width: 720px; }
+  input {
+    flex: 1;
+    font: inherit;
+    padding: 11px 13px;
+    background: #17130f;
+    border: 1px solid rgba(247,241,230,0.14);
+    border-radius: 6px;
+    color: #f7f1e6;
+  }
+  button {
+    font: inherit;
+    padding: 11px 20px;
+    background: #ffa62b;
+    color: #0c0a09;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; }
+
+  #screen {
+    width: 100%;
+    max-width: 720px;
+    aspect-ratio: 16/9;
+    background: #17130f;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  #screen video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+
+  ul { list-style: none; padding: 0; margin: 0; max-width: 720px; }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(247,241,230,0.1);
+  }
+  li img { width: 64px; height: 36px; object-fit: cover; border-radius: 3px; }
+  li .meta { flex: 1; min-width: 0; }
+  li b { display: block; }
+  li span { color: rgba(247,241,230,0.5); font-size: 14px; }
+  li button { padding: 8px 16px; }
+
+  #log {
+    margin-top: 18px;
+    max-width: 720px;
+    padding: 13px 15px;
+    border-radius: 6px;
+    background: #17130f;
+    border-left: 3px solid #ffa62b;
+    white-space: pre-wrap;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Video Jukebox feasibility test</h1>
+<p class="lead">
+  Searches Apple Music for music videos and tries to play one. This answers the
+  only question that matters: does the video actually play, full length, no ads,
+  on the subscription you already have.
+</p>
+
+<div class="row">
+  <button id="signin">Sign in to Apple Music</button>
+  <span id="authstate">not signed in</span>
+</div>
+
+<div class="row">
+  <input id="term" placeholder="Search for a music video" value="whip it devo">
+  <button id="search" disabled>Search</button>
+</div>
+
+<div id="screen"></div>
+
+<ul id="results"></ul>
+
+<div id="log">Loading MusicKit...</div>
+
+<script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" data-web-components async></script>
+<script>
+// Developer token from make_music_token.py. Expires March 6, 2027.
+const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJVOTY4TVdaSjhUIiwiaWF0IjoxNzg4NTY5OTIyLCJleHAiOjE4MDQzNDY5MjJ9.gO46sv13ANw3wBn7jodVOBEKpjgfdUEpWfvpCV254YFTbX-_TPYbxJTxo2XVFEYAZdyu_Obm8girpiJvTBal3g";
+
+const el = id => document.getElementById(id);
+let music = null;
+
+function log(text) {
+  el("log").textContent = text + "\n\n" + el("log").textContent;
+}
+
+document.addEventListener("musickitloaded", async () => {
+  try {
+    music = await MusicKit.configure({
+      developerToken: DEVELOPER_TOKEN,
+      app: { name: "Dock Jukebox Video", build: "1.0.0" }
+    });
+
+    // MusicKit paints video into whatever element we hand it. Without this it
+    // plays the audio and shows nothing.
+    music.videoContainerElement = el("screen");
+
+    el("search").disabled = false;
+    log("MusicKit ready. Sign in, then search.");
+
+    if (music.isAuthorized) {
+      el("authstate").textContent = "signed in";
+    }
+  } catch (error) {
+    log("Configure failed: " + error.message);
+  }
+});
+
+el("signin").addEventListener("click", async () => {
+  try {
+    if (!music.isAuthorized) await music.authorize();
+    el("authstate").textContent = "signed in";
+    log("Signed in.");
+  } catch (error) {
+    log("Sign in failed: " + error.message);
+  }
+});
+
+el("search").addEventListener("click", async () => {
+  const term = el("term").value.trim();
+  if (!term) return;
+
+  el("results").innerHTML = "";
+  log("Searching music videos for: " + term);
+
+  try {
+    const response = await music.api.music("/v1/catalog/us/search", {
+      term: term,
+      types: ["music-videos"],
+      limit: 10
+    });
+
+    const videos = response.data.results["music-videos"]
+      ? response.data.results["music-videos"].data
+      : [];
+
+    if (videos.length === 0) {
+      log("NO MUSIC VIDEOS for that search. Apple has the song but not a video.");
+      return;
+    }
+
+    log("Found " + videos.length + " music videos.");
+    videos.forEach(show);
+  } catch (error) {
+    log("Search failed: " + error.message);
+  }
+});
+
+function show(video) {
+  const art = video.attributes.artwork.url
+    .replace("{w}", "128").replace("{h}", "72");
+
+  const li = document.createElement("li");
+
+  const img = document.createElement("img");
+  img.src = art;
+  img.alt = "";
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  const name = document.createElement("b");
+  name.textContent = video.attributes.name;
+  const sub = document.createElement("span");
+  sub.textContent = video.attributes.artistName
+    + (video.attributes.contentRating === "explicit" ? "  [explicit]" : "");
+  meta.append(name, sub);
+
+  const button = document.createElement("button");
+  button.textContent = "Play video";
+  button.addEventListener("click", () => play(video));
+
+  li.append(img, meta, button);
+  el("results").appendChild(li);
+}
+
+async function play(video) {
+  try {
+    log("Starting: " + video.attributes.name + "  id " + video.id);
+    await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
+    log("PLAYING. If you see picture and hear sound, the video jukebox works.");
+  } catch (error) {
+    log("VIDEO PLAYBACK FAILED: " + (error.message || error));
+  }
+}
+</script>
+
+</body>
+</html>
