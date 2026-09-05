@@ -360,6 +360,10 @@
 
 <main>
   <div class="pane on" id="pane-play">
+    <div class="note warn" id="offnet" style="display:none">
+      You have to be on the shop WiFi to play something. You can still watch
+      the queue from here.
+    </div>
     <div class="note" id="message">Search for something and hit Play to put it on the dock speakers.</div>
     <ul id="results"></ul>
   </div>
@@ -430,6 +434,9 @@ try {
 }
 let userName = me ? me.nickname : "";
 
+// This phone's public address, checked against the shop's before queueing.
+let myAddress = null;
+
 function message(text, warn) {
   el("message").textContent = text || "";
   el("message").classList.toggle("warn", !!warn);
@@ -446,6 +453,32 @@ async function api(action, params) {
 
   const response = await fetch(url, { cache: "no-store" });
   return await response.json();
+}
+
+/**
+ * Finds this device's public address. Everyone on the shop WiFi shares one.
+ * Forced to IPv4 so the player and the phones are always comparing like for
+ * like. Falls back to Cloudflare if ipify is unreachable.
+ */
+async function publicAddress() {
+  try {
+    const response = await fetch("https://api.ipify.org?format=json");
+    const data = await response.json();
+    if (data.ip) return data.ip;
+  } catch (error) {
+    // Fall through to the backup.
+  }
+
+  try {
+    const response = await fetch("https://www.cloudflare.com/cdn-cgi/trace");
+    const text = await response.text();
+    const line = text.split("\n").filter(row => row.indexOf("ip=") === 0)[0];
+    if (line) return line.slice(3).trim();
+  } catch (error) {
+    // No address available.
+  }
+
+  return null;
 }
 
 /** Turns Apple's artwork template into a real URL at the size we want. */
@@ -491,13 +524,38 @@ async function runSearch() {
     if (!response.ok) throw new Error("Search is not answering right now.");
 
     const data = await response.json();
-    const songs = data.results.songs ? data.results.songs.data : [];
+    const found = data.results.songs ? data.results.songs.data : [];
+    const songs = found.filter(isCleanEnough);
+    const hidden = found.length - songs.length;
 
-    message(songs.length ? "" : "Nothing found for " + term);
+    if (songs.length === 0) {
+      message(hidden > 0
+        ? "Only explicit versions of that came back. Try the clean version."
+        : "Nothing found for " + term);
+    } else {
+      message(hidden > 0 ? hidden + " explicit version(s) hidden" : "");
+    }
+
     songs.forEach(showSong);
   } catch (error) {
     message(error.message, true);
   }
+}
+
+// Nothing explicit goes over the dock speakers. Apple flags most of it; the
+// word list catches anything rated clean that still has a filthy title.
+const BANNED_WORDS = [
+  "fuck", "shit", "bitch", "cunt", "nigga", "nigger", "whore", "slut",
+  "motherfucker", "pussy", "cock", "dick", "faggot", "rape"
+];
+
+function isCleanEnough(song) {
+  if (song.attributes.contentRating === "explicit") return false;
+
+  const text = " " + (song.attributes.name + " " + song.attributes.artistName
+    + " " + (song.attributes.albumName || "")).toLowerCase() + " ";
+
+  return !BANNED_WORDS.some(word => text.indexOf(word) !== -1);
 }
 
 function showSong(song) {
@@ -535,7 +593,9 @@ async function queueSong(song, button) {
       songId: song.id,
       title: song.attributes.name,
       artist: song.attributes.artistName,
-      by: userName
+      by: userName,
+      from: myAddress || "",
+      explicit: song.attributes.contentRating === "explicit" ? "true" : "false"
     });
 
     if (result.ok) {
@@ -730,6 +790,35 @@ if (userName) {
 } else {
   loadPeople();
 }
+
+/**
+ * Blocks queueing from anywhere but the shop network. The queue stays visible
+ * either way, so a driver on the road can still see what is playing.
+ */
+async function checkNetwork() {
+  myAddress = await publicAddress();
+
+  let result;
+  try {
+    result = await api("netCheck", { ip: myAddress || "" });
+  } catch (error) {
+    return;
+  }
+
+  const offsite = result.ok && result.onNetwork === false;
+  el("offnet").style.display = offsite ? "block" : "none";
+  el("results").style.display = offsite ? "none" : "block";
+  el("term").disabled = offsite;
+  el("go").disabled = offsite;
+
+  if (offsite) {
+    message("");
+    showPane("queue");
+  }
+}
+
+checkNetwork();
+setInterval(checkNetwork, 60000);
 
 loadQueue();
 setInterval(loadQueue, REFRESH_MS);
