@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube embed feasibility test</title>
+<style>
+  body {
+    margin: 0;
+    padding: 22px;
+    background: #0c0a09;
+    color: #f7f1e6;
+    font: 16px/1.5 system-ui, sans-serif;
+  }
+  h1 { font-size: 21px; margin: 0 0 6px; }
+  p.lead { color: rgba(247,241,230,0.5); margin: 0 0 18px; max-width: 62ch; }
+
+  .row { display: flex; gap: 8px; margin-bottom: 16px; max-width: 720px; }
+  input {
+    flex: 1;
+    font: inherit;
+    padding: 11px 13px;
+    background: #17130f;
+    border: 1px solid rgba(247,241,230,0.14);
+    border-radius: 6px;
+    color: #f7f1e6;
+  }
+  button {
+    font: inherit;
+    padding: 11px 20px;
+    background: #ffa62b;
+    color: #0c0a09;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  #screen {
+    width: 100%;
+    max-width: 720px;
+    aspect-ratio: 16/9;
+    background: #17130f;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  #screen iframe { width: 100%; height: 100%; border: 0; }
+
+  #verdict {
+    max-width: 720px;
+    padding: 13px 15px;
+    border-radius: 6px;
+    background: #17130f;
+    border-left: 3px solid #ffa62b;
+    margin-bottom: 16px;
+  }
+
+  #log {
+    max-width: 720px;
+    padding: 13px 15px;
+    border-radius: 6px;
+    background: #17130f;
+    border-left: 3px solid rgba(247,241,230,0.2);
+    white-space: pre-wrap;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<h1>YouTube embed feasibility test</h1>
+<p class="lead">
+  Answers the three questions that decide whether the jukebox can use YouTube
+  for videos Apple does not carry. Does the video embed at all, does it play
+  with sound without being touched, and does an ad run first.
+</p>
+
+<div class="row">
+  <input id="url" placeholder="Paste a YouTube link or video ID">
+  <button id="load">Play it</button>
+</div>
+
+<div id="screen"></div>
+
+<div id="verdict">Paste a link and press Play it.</div>
+
+<div id="log">Loading the YouTube player...</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+// ---------------------------------------------------------------------------
+// This page is a throwaway diagnostic, not part of the jukebox. It exists to
+// settle three questions before any YouTube code goes into player.html:
+//
+//   1. EMBEDDING. Labels and Vevo can forbid playback outside youtube.com.
+//      That comes back as error 101 or 150 and no amount of code fixes it.
+//   2. AUTOPLAY WITH SOUND. The jukebox starts songs on a timer, not a tap.
+//      If YouTube will only autoplay muted, it is useless as a jukebox.
+//   3. ADS. Premium is tied to a Google account cookie. This page runs on a
+//      different origin to youtube.com, so the embed may not see that the
+//      viewer is a Premium member and may serve ads regardless.
+//
+// Question 3 cannot be read from the API, so it has to be watched. Everything
+// else is logged below.
+// ---------------------------------------------------------------------------
+
+const el = id => document.getElementById(id);
+
+let player = null;
+let apiReady = false;
+let pendingId = null;
+let startedAt = 0;
+
+// Human-readable names for the numbers the player reports.
+const STATE_NAMES = {
+  "-1": "unstarted",
+  "0": "ended",
+  "1": "playing",
+  "2": "paused",
+  "3": "buffering",
+  "5": "cued"
+};
+
+// The only error codes that matter here. 101 and 150 mean the same thing.
+const ERROR_NAMES = {
+  "2": "the video ID was rejected as invalid",
+  "5": "the player could not handle this video",
+  "100": "the video does not exist, or is private",
+  "101": "EMBEDDING BLOCKED. The owner does not allow playback off YouTube.",
+  "150": "EMBEDDING BLOCKED. The owner does not allow playback off YouTube."
+};
+
+
+function log(text) {
+  const stamp = new Date().toLocaleTimeString();
+  el("log").textContent = stamp + "  " + text + "\n" + el("log").textContent;
+}
+
+function verdict(text) {
+  el("verdict").textContent = text;
+}
+
+
+/**
+ * Pulls the video ID out of whatever was pasted. Accepts a full watch link,
+ * a youtu.be short link, an embed link, or a bare ID.
+ */
+function videoIdFrom(text) {
+  const input = String(text || "").trim();
+  if (!input) return "";
+
+  // A bare ID is 11 characters of letters, numbers, dash and underscore.
+  if (/^[\w-]{11}$/.test(input)) return input;
+
+  const match = input.match(/(?:v=|\/embed\/|youtu\.be\/|\/shorts\/)([\w-]{11})/);
+  return match ? match[1] : "";
+}
+
+
+// The YouTube API calls this by name when it has finished loading.
+function onYouTubeIframeAPIReady() {
+  apiReady = true;
+  log("Player API ready. Page origin is " + window.location.origin);
+
+  if (pendingId) {
+    const id = pendingId;
+    pendingId = null;
+    start(id);
+  }
+}
+
+
+el("load").addEventListener("click", () => {
+  const id = videoIdFrom(el("url").value);
+
+  if (!id) {
+    verdict("That does not look like a YouTube link or ID.");
+    return;
+  }
+
+  if (!apiReady) {
+    pendingId = id;
+    log("API not ready yet. Will start " + id + " as soon as it is.");
+    return;
+  }
+
+  start(id);
+});
+
+
+/** Builds a fresh player for one video and reports everything it does. */
+function start(id) {
+  el("screen").innerHTML = "<div id='frame'></div>";
+  verdict("Starting " + id + "...");
+  log("Requesting " + id);
+  startedAt = Date.now();
+
+  player = new YT.Player("frame", {
+    videoId: id,
+    playerVars: {
+      autoplay: 1,
+      playsinline: 1,   // Stops iPadOS taking the video fullscreen on its own.
+      rel: 0,
+      modestbranding: 1
+    },
+    events: {
+      onReady: onReady,
+      onStateChange: onStateChange,
+      onError: onError
+    }
+  });
+}
+
+
+function onReady(event) {
+  log("Player ready after " + (Date.now() - startedAt) + "ms");
+
+  // Explicitly ask for sound. If autoplay only works muted, this is where it
+  // shows up: the video will play and the mute state will stay true.
+  event.target.unMute();
+  event.target.setVolume(100);
+  event.target.playVideo();
+
+  setTimeout(() => {
+    if (!player || !player.isMuted) return;
+    log(player.isMuted()
+      ? "MUTED. Autoplay with sound was refused."
+      : "Unmuted. Autoplay with sound was allowed.");
+  }, 2500);
+}
+
+
+function onStateChange(event) {
+  const name = STATE_NAMES[String(event.data)] || ("state " + event.data);
+  let line = "State: " + name;
+
+  if (player && player.getDuration) {
+    const seconds = Math.round(player.getDuration());
+    if (seconds) line += "  (length " + seconds + "s)";
+  }
+
+  log(line);
+
+  if (event.data === YT.PlayerState.PLAYING) {
+    verdict("It is playing. Watch for an ad, and check you can hear it.");
+  }
+
+  if (event.data === YT.PlayerState.ENDED) {
+    verdict("Reached the end cleanly. End detection would work.");
+    log("ENDED fired. This is the event the jukebox would advance on.");
+  }
+}
+
+
+function onError(event) {
+  const reason = ERROR_NAMES[String(event.data)] || ("error " + event.data);
+  verdict("Failed: " + reason);
+  log("ERROR " + event.data + " - " + reason);
+}
+</script>
+
+</body>
+</html>
