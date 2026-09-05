@@ -312,19 +312,6 @@
     color: var(--cream);
     font: inherit;
   }
-  .person .badge {
-    font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: 17px;
-    letter-spacing: 0.06em;
-    color: var(--amber);
-    border: 1px solid rgba(255,166,43,0.45);
-    border-radius: 6px;
-    padding: 3px 9px;
-    flex-shrink: 0;
-    min-width: 52px;
-    text-align: center;
-  }
-  .person .badge.blank { opacity: 0.35; }
   .person b { font-weight: 600; font-size: 19px; }
   .person span { display: block; color: var(--dim); font-size: 15px; }
 
@@ -737,10 +724,6 @@ async function loadPeople() {
     const button = document.createElement("button");
     button.className = "person";
 
-    const badge = document.createElement("div");
-    badge.className = "badge" + (person.truck ? "" : " blank");
-    badge.textContent = person.truck || "—";
-
     const text = document.createElement("div");
     const nick = document.createElement("b");
     nick.textContent = person.nickname;
@@ -748,7 +731,7 @@ async function loadPeople() {
     full.textContent = person.fullName;
     text.append(nick, full);
 
-    button.append(badge, text);
+    button.append(text);
     button.addEventListener("click", () => signIn(person));
     list.appendChild(button);
   });
