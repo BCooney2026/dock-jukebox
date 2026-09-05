@@ -172,6 +172,13 @@ const POLL_MS = 4000;
 let music = null;
 let currentQueueId = null;
 
+// Guards against retiring a song before it has had a chance to start.
+let heardItPlaying = false;
+let startedAt = 0;
+
+// How long to wait for a song to actually start before giving up on it.
+const START_TIMEOUT_MS = 20000;
+
 const el = id => document.getElementById(id);
 
 function setStatus(text, live) {
@@ -208,9 +215,28 @@ document.addEventListener("musickitloaded", async () => {
 
 el("startbtn").addEventListener("click", async () => {
   await music.authorize();
+  await unlockAudio();
   el("start").style.display = "none";
   begin();
 });
+
+/**
+ * Browsers refuse to start audio unless a person clicked something. Songs get
+ * started later by a timer, which does not count, so we play one track silently
+ * during the button press to open the gate for everything after it.
+ */
+async function unlockAudio() {
+  try {
+    music.volume = 0;
+    await music.setQueue({ song: "251002253", startPlaying: true });
+    await new Promise(resolve => setTimeout(resolve, 400));
+    music.stop();
+  } catch (error) {
+    // Nothing to do. If this failed, the first request will show the problem.
+  } finally {
+    music.volume = 1;
+  }
+}
 
 function begin() {
   setStatus("waiting for requests", true);
@@ -223,10 +249,19 @@ async function tick() {
   const state = await api("getQueue");
   if (!state || !state.ok) return;
 
-  // A request finished playing. Retire it.
-  if (currentQueueId && !music.isPlaying) {
-    await api("markPlayed", { queueId: currentQueueId });
-    currentQueueId = null;
+  if (currentQueueId) {
+    if (music.isPlaying) {
+      // Once we have actually heard it, silence later means it ended.
+      heardItPlaying = true;
+    } else if (heardItPlaying) {
+      await api("markPlayed", { queueId: currentQueueId });
+      currentQueueId = null;
+    } else if (Date.now() - startedAt > START_TIMEOUT_MS) {
+      // It never started. Retire it rather than jam the queue.
+      await api("markPlayed", { queueId: currentQueueId });
+      currentQueueId = null;
+      setStatus("a track would not start");
+    }
   }
 
   // The office skipped it out from under us.
@@ -247,6 +282,8 @@ async function tick() {
 /** Plays one requested song and tells the sheet it started. */
 async function playRequest(item) {
   currentQueueId = item.QueueID;
+  heardItPlaying = false;
+  startedAt = Date.now();
   await api("markPlaying", { queueId: item.QueueID });
 
   try {
