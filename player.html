@@ -428,6 +428,10 @@ let heardItPlaying = false;
 let startedAt = 0;
 let playbackError = null;
 
+// Set by Apple's own end-of-track event. Videos do not reliably flip
+// isPlaying when they finish, so waiting for that alone stalls the queue.
+let trackFinished = false;
+
 const el = id => document.getElementById(id);
 
 if (location.search.indexOf("debug=1") !== -1) {
@@ -599,6 +603,13 @@ function chaseVideoElement() {
 }
 
 
+/** Gets the leftover video element out of the way for an audio-only song. */
+function hideVideoElement() {
+  const video = findVideoElement(document);
+  if (video) video.style.display = "none";
+}
+
+
 function showVideoStage(on, title, artist, by) {
   el("videostage").classList.toggle("on", on);
   if (!on) return;
@@ -677,6 +688,7 @@ async function unlockAudio() {
 }
 
 function begin() {
+  watchPlaybackState();
   setStatus("waiting for requests", true);
   reportHome();
   tick();
@@ -684,6 +696,29 @@ function begin() {
   setInterval(paintProgress, 1000);
   setInterval(reportHome, 3600000);
 }
+
+/** Listens for Apple telling us a track ended, rather than guessing. */
+function watchPlaybackState() {
+  music.addEventListener("playbackStateDidChange", () => {
+    const state = music.playbackState;
+    const states = MusicKit.PlaybackStates || {};
+
+    // Only "completed" and "ended" mean the track actually ran out.
+    // "stopped" is deliberately NOT on this list. We call music.stop()
+    // ourselves at the top of every song, which would fire this listener
+    // while the new song's QueueID was already set and mark it finished
+    // about four seconds after it started.
+    const done = [states.completed, states.ended]
+      .filter(value => value !== undefined)
+      .indexOf(state) !== -1;
+
+    if (done && currentQueueId) {
+      trackFinished = true;
+      debugLine("track finished, advancing");
+    }
+  });
+}
+
 
 /**
  * Tells the API what the shop's public address is. This machine only ever runs
@@ -709,7 +744,11 @@ async function tick() {
   if (!state || !state.ok) return;
 
   if (currentQueueId) {
-    if (music.isPlaying) {
+    if (trackFinished) {
+      await api("markPlayed", { queueId: currentQueueId });
+      currentQueueId = null;
+      trackFinished = false;
+    } else if (music.isPlaying) {
       // Once we have actually heard it, silence later means it ended.
       heardItPlaying = true;
     } else if (heardItPlaying) {
@@ -741,6 +780,7 @@ async function tick() {
 async function playRequest(item) {
   currentQueueId = item.QueueID;
   heardItPlaying = false;
+  trackFinished = false;
   startedAt = Date.now();
   playbackError = null;
   await api("markPlaying", { queueId: item.QueueID });
@@ -764,6 +804,7 @@ async function playRequest(item) {
       setStatus("playing a video", true);
     } else {
       await music.setQueue({ song: songId, startPlaying: true });
+      hideVideoElement();
       showVideoStage(false);
       setStatus("no video, playing the track", true);
     }
