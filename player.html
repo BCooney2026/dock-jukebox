@@ -508,25 +508,26 @@ const API_URL = "https://script.google.com/a/macros/cooneyprovisions.com/s/AKfyc
 // Developer token from make_music_token.py. Expires March 6, 2027.
 const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJVOTY4TVdaSjhUIiwiaWF0IjoxNzg4NTY5OTIyLCJleHAiOjE4MDQzNDY5MjJ9.gO46sv13ANw3wBn7jodVOBEKpjgfdUEpWfvpCV254YFTbX-_TPYbxJTxo2XVFEYAZdyu_Obm8girpiJvTBal3g";
 
-// Apple Music playlists that fill the silence when nobody has requested
-// anything. Silence is not only dull: iOS suspends a tab that stops making
-// noise, so on the iPad this is also what keeps the jukebox alive overnight.
+// What fills the silence when nobody has requested anything. Silence is not
+// only dull: iOS suspends a tab that stops making noise, so on the iPad this
+// is also what keeps the jukebox alive overnight.
 //
-// Put several in. One is picked at random whenever the queue runs dry, so the
-// dock does not hear the same running order every single day.
+// These are search terms, not playlist IDs. The player asks Apple for a
+// curated playlist matching one of them, picked at random whenever the queue
+// runs dry. Written this way there is nothing to copy by hand, nothing to go
+// stale when Apple retires a playlist, and Apple's own curation keeps it fresh
+// without anybody touching this file.
 //
-// These must be Apple's OWN catalog playlists, not ones built in a personal
-// library. The player reaches Apple with the developer token rather than the
-// account sign-in, so it cannot see a personal playlist. Use house-picker.html
-// to find IDs; everything it lists is a catalog playlist and will resolve.
-const HOUSE_PLAYLISTS = [
-  // "pl.xxxxxxxxxxxxxxxxxxxxxxxx",
+// An entry starting with "pl." is used as a playlist ID exactly as written, so
+// a specific playlist can still be pinned if one of these ever misbehaves.
+const HOUSE_STATIONS = [
+  "classic rock", "oldies", "80s hits", "90s hits", "motown",
+  "classic country", "soft rock", "yacht rock", "feel good"
 ];
 
-// Used instead of the list above during the holiday window below. Leave empty
-// and nothing changes in December.
-const HOLIDAY_PLAYLISTS = [
-  // "pl.xxxxxxxxxxxxxxxxxxxxxxxx",
+// Used instead of the list above during the holiday window below.
+const HOLIDAY_STATIONS = [
+  "christmas classics", "holiday hits", "christmas oldies"
 ];
 
 // When the holiday rotation takes over, inclusive. Month then day.
@@ -1467,19 +1468,63 @@ function inHolidaySeason() {
 }
 
 
-/** One playlist at random from whichever set belongs to today. */
-function housePlaylist() {
-  const holiday = inHolidaySeason() && HOLIDAY_PLAYLISTS.length > 0;
-  const pool = holiday ? HOLIDAY_PLAYLISTS : HOUSE_PLAYLISTS;
+/** One station at random from whichever set belongs to today. */
+function houseStation() {
+  const holiday = inHolidaySeason() && HOLIDAY_STATIONS.length > 0;
+  const pool = holiday ? HOLIDAY_STATIONS : HOUSE_STATIONS;
 
   if (pool.length === 0) return "";
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 
+// Station names resolve to the same playlist all day, so the answers are kept
+// rather than searched for again every time the queue empties.
+const stationMemo = new Map();
+
+/**
+ * Turns a station name into a playlist ID Apple will actually play.
+ *
+ * Apple's own playlists are preferred over anything else that matches, because
+ * a search for "oldies" will happily return somebody's public playlist and we
+ * would rather have the curated one going out over the dock.
+ */
+async function resolveStation(station) {
+  if (!station) return "";
+  if (station.indexOf("pl.") === 0) return station;
+  if (stationMemo.has(station)) return stationMemo.get(station);
+
+  try {
+    const response = await music.api.music("/v1/catalog/us/search", {
+      term: station,
+      types: ["playlists"],
+      limit: 10
+    });
+
+    const found = response.data.results.playlists;
+    const playlists = found ? found.data : [];
+    if (playlists.length === 0) return "";
+
+    const curated = playlists.filter(item =>
+      /apple music/i.test((item.attributes || {}).curatorName || "")
+    );
+
+    const chosen = (curated[0] || playlists[0]).id;
+    stationMemo.set(station, chosen);
+    debugLine("house station \"" + station + "\" -> " + chosen);
+
+    return chosen;
+  } catch (error) {
+    debugLine("could not resolve station \"" + station + "\"");
+    return "";
+  }
+}
+
+
 /** Falls back to a house playlist so the dock is never silent. */
 async function playHouse() {
-  const playlist = housePlaylist();
+  const station = houseStation();
+  const playlist = await resolveStation(station);
 
   if (!playlist) {
     showVideoStage(false);
@@ -1494,8 +1539,11 @@ async function playHouse() {
   try {
     showVideoStage(false);
     await music.setQueue({ playlist: playlist, startPlaying: true });
-    setStatus(inHolidaySeason() ? "holiday playlist" : "house playlist", true);
+    setStatus(station, true);
   } catch (error) {
+    // A station that will not load is dropped so the next attempt tries
+    // another one rather than getting stuck on the same broken playlist.
+    stationMemo.delete(station);
     setStatus("house playlist would not load");
   }
 }
