@@ -65,16 +65,20 @@
 
   /* MusicKit injects its own video element and likes to position it over the
      whole page. Pin it inside the box instead. */
-  #screen video,
-  #screen > * {
+  #screen video {
     position: absolute !important;
     inset: 0 !important;
     width: 100% !important;
     height: 100% !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
     object-fit: contain;
     background: #000;
+    z-index: 1;
+  }
+  #screen > div {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
   }
 
   #videobar {
@@ -520,18 +524,63 @@ async function musicVideoFor(title, artist) {
 
 
 /**
- * MusicKit tears its video element down between songs, so the container gets
- * handed back every time and anything it builds loose on the page gets
- * dragged into the box.
+ * MusicKit builds its video element wherever it likes, sometimes inside a
+ * shadow root, and tears it down between songs. This hunts the whole page for
+ * it, drags it into our box, and forces it visible.
  */
 function attachScreen() {
   music.videoContainerElement = el("screen");
 
   const screen = el("screen");
-  if (screen.querySelector("video")) return;
+  const video = findVideoElement(document);
 
-  const stray = document.querySelector("video");
-  if (stray) screen.appendChild(stray);
+  if (!video) return false;
+
+  if (video.parentElement !== screen) {
+    screen.appendChild(video);
+    debugLine("moved the video element into the screen");
+  }
+
+  // MusicKit sometimes leaves it hidden or sized to nothing.
+  video.style.display = "block";
+  video.style.visibility = "visible";
+  video.style.opacity = "1";
+  video.removeAttribute("hidden");
+  video.setAttribute("playsinline", "");
+
+  return true;
+}
+
+/** Depth-first search for a video element, shadow roots included. */
+function findVideoElement(root) {
+  const direct = root.querySelector ? root.querySelector("video") : null;
+  if (direct) return direct;
+
+  const all = root.querySelectorAll ? root.querySelectorAll("*") : [];
+  for (const node of all) {
+    if (node.shadowRoot) {
+      const found = findVideoElement(node.shadowRoot);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * Keeps looking for a few seconds after a video starts, because MusicKit does
+ * not create the element until the stream is actually ready.
+ */
+function chaseVideoElement() {
+  let tries = 0;
+  const hunt = setInterval(() => {
+    tries++;
+    if (attachScreen() || tries > 24) {
+      clearInterval(hunt);
+      if (tries > 24) {
+        debugLine("never found a video element after 12s");
+      }
+    }
+  }, 500);
 }
 
 
@@ -696,8 +745,7 @@ async function playRequest(item) {
     if (video) {
       await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
       showVideoStage(true, item.Title, item.Artist, item.RequestedBy);
-      setTimeout(attachScreen, 600);
-      setTimeout(attachScreen, 2000);
+      chaseVideoElement();
       setStatus("playing a video", true);
     } else {
       await music.setQueue({ song: songId, startPlaying: true });
