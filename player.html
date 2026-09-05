@@ -603,6 +603,13 @@ let onYouTube = false;
 // queue answer, so there is only ever one copy of it to maintain.
 let bannedWords = [];
 
+// The house rotation is driven one track at a time rather than handed to Apple
+// as a playlist, so that station tracks get videos and the explicit filter in
+// exactly the same way requested songs do.
+let houseTrack = null;
+let houseQueue = [];
+let houseStationName = "";
+
 const el = id => document.getElementById(id);
 
 if (location.search.indexOf("debug=1") !== -1) {
@@ -1065,7 +1072,8 @@ function playYouTube(videoId) {
         event.target.playVideo();
       },
       onStateChange: event => {
-        if (event.data === YT.PlayerState.ENDED && currentQueueId) {
+        if (event.data === YT.PlayerState.ENDED
+            && (currentQueueId || houseTrack)) {
           trackFinished = true;
           debugLine("youtube video finished, advancing");
         }
@@ -1313,7 +1321,7 @@ function watchPlaybackState() {
       .filter(value => value !== undefined)
       .indexOf(state) !== -1;
 
-    if (done && currentQueueId) {
+    if (done && (currentQueueId || houseTrack)) {
       trackFinished = true;
       debugLine("track finished, advancing");
     }
@@ -1369,6 +1377,12 @@ async function tick() {
       currentQueueId = null;
       setStatus("a track would not start");
     }
+  } else if (houseTrack && trackFinished) {
+    // A station track finished. Nothing to report to the sheet, it just
+    // clears the way for the next one.
+    houseTrack = null;
+    trackFinished = false;
+    stopYouTube();
   }
 
   // The office skipped it out from under us.
@@ -1387,9 +1401,59 @@ async function tick() {
   paintQueue(state.waiting);
 }
 
+/**
+ * Plays one song, with a video if one can be found, and paints the screen.
+ *
+ * Requested songs and house rotation tracks both come through here. That is
+ * deliberate: when the house rotation had its own path it quietly skipped both
+ * the video lookup and the explicit filter, and the two would drift apart
+ * every time one of them was changed.
+ */
+async function playSong(songId, title, artist, by) {
+  currentSongId = songId;
+
+  const details = await songDetails(songId);
+
+  music.stop();
+  stopYouTube();
+  attachScreen();
+
+  const video = PLAY_VIDEOS
+    ? await musicVideoFor(title, artist)
+    : null;
+
+  // Apple first, always. YouTube is only asked about songs Apple has no
+  // video for, and only once the player API has finished loading.
+  const backup = (!video && PLAY_VIDEOS && ytApiReady)
+    ? await youtubeVideoFor(songId, title, artist, details.durationMs)
+    : null;
+
+  if (video) {
+    await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
+    showVideoStage(true, title, artist, by);
+    chaseVideoElement();
+    setStatus("playing a video", true);
+  } else if (backup) {
+    hideVideoElement();
+    playYouTube(backup);
+    showVideoStage(true, title, artist, by);
+    setStatus("playing a video from YouTube", true);
+  } else {
+    await music.setQueue({ song: songId, startPlaying: true });
+    hideVideoElement();
+    showVideoStage(false);
+    setStatus("no video, playing the track", true);
+  }
+
+  paintNowPlaying(title, artist, by);
+  paintArtwork(sized(details.artwork, 900));
+}
+
+
 /** Plays one requested song and tells the sheet it started. */
 async function playRequest(item) {
   currentQueueId = item.QueueID;
+  houseTrack = null;
   heardItPlaying = false;
   trackFinished = false;
   startedAt = Date.now();
@@ -1399,44 +1463,12 @@ async function playRequest(item) {
   try {
     // Google Sheets hands back numeric IDs as numbers. MusicKit only accepts
     // strings and fails with "could not be resolved" on anything else.
-    const songId = String(item.SongID).trim();
-    currentSongId = songId;
-
-    const details = await songDetails(songId);
-
-    music.stop();
-    stopYouTube();
-    attachScreen();
-
-    const video = PLAY_VIDEOS
-      ? await musicVideoFor(item.Title, item.Artist)
-      : null;
-
-    // Apple first, always. YouTube is only asked about songs Apple has no
-    // video for, and only once the player API has finished loading.
-    const backup = (!video && PLAY_VIDEOS && ytApiReady)
-      ? await youtubeVideoFor(songId, item.Title, item.Artist, details.durationMs)
-      : null;
-
-    if (video) {
-      await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
-      showVideoStage(true, item.Title, item.Artist, item.RequestedBy);
-      chaseVideoElement();
-      setStatus("playing a video", true);
-    } else if (backup) {
-      hideVideoElement();
-      playYouTube(backup);
-      showVideoStage(true, item.Title, item.Artist, item.RequestedBy);
-      setStatus("playing a video from YouTube", true);
-    } else {
-      await music.setQueue({ song: songId, startPlaying: true });
-      hideVideoElement();
-      showVideoStage(false);
-      setStatus("no video, playing the track", true);
-    }
-
-    paintNowPlaying(item.Title, item.Artist, item.RequestedBy);
-    paintArtwork(sized(details.artwork, 900));
+    await playSong(
+      String(item.SongID).trim(),
+      item.Title,
+      item.Artist,
+      item.RequestedBy
+    );
   } catch (error) {
     playbackError = error && error.message ? error.message : String(error);
     debugLine("PLAYBACK FAILED: " + playbackError);
@@ -1521,12 +1553,66 @@ async function resolveStation(station) {
 }
 
 
-/** Falls back to a house playlist so the dock is never silent. */
-async function playHouse() {
-  const station = houseStation();
-  const playlist = await resolveStation(station);
+/**
+ * Pulls the songs out of a station's playlist, drops anything that cannot go
+ * over the dock speakers, and shuffles what is left.
+ *
+ * Filtering here is the reason the rotation is driven track by track. When the
+ * whole playlist was handed to Apple, none of it was checked, and Apple's hits
+ * playlists do carry explicit tracks.
+ */
+async function stationTracks(playlistId) {
+  try {
+    const response = await music.api.music(
+      "/v1/catalog/us/playlists/" + playlistId,
+      { include: "tracks" }
+    );
 
-  if (!playlist) {
+    const playlist = response.data.data[0];
+    const tracks = playlist.relationships.tracks.data || [];
+
+    const clean = tracks.filter(track => {
+      const attributes = track.attributes || {};
+      if (attributes.contentRating === "explicit") return false;
+      if (isFoul(attributes.name)) return false;
+      if (isFoul(attributes.artistName)) return false;
+      return track.type === "songs";
+    });
+
+    // Shuffled so a station does not open with the same song every time.
+    for (let i = clean.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const swap = clean[i];
+      clean[i] = clean[j];
+      clean[j] = swap;
+    }
+
+    return clean.map(track => ({
+      id: String(track.id),
+      title: track.attributes.name,
+      artist: track.attributes.artistName
+    }));
+  } catch (error) {
+    debugLine("could not read station tracks: " + (error.message || error));
+    return [];
+  }
+}
+
+
+/** Falls back to the house rotation so the dock is never silent. */
+async function playHouse() {
+  if (houseQueue.length === 0) {
+    const station = houseStation();
+    const playlist = await resolveStation(station);
+
+    if (playlist) {
+      houseQueue = await stationTracks(playlist);
+      houseStationName = station;
+    }
+  }
+
+  if (houseQueue.length === 0) {
+    houseTrack = null;
     showVideoStage(false);
     paintNowPlaying("Nothing playing", "", "");
     paintArtwork(null);
@@ -1536,15 +1622,18 @@ async function playHouse() {
     return;
   }
 
+  const track = houseQueue.shift();
+  houseTrack = track;
+  trackFinished = false;
+
   try {
-    showVideoStage(false);
-    await music.setQueue({ playlist: playlist, startPlaying: true });
-    setStatus(station, true);
+    await playSong(track.id, track.title, track.artist, "");
+    setStatus(houseStationName, true);
   } catch (error) {
-    // A station that will not load is dropped so the next attempt tries
-    // another one rather than getting stuck on the same broken playlist.
-    stationMemo.delete(station);
-    setStatus("house playlist would not load");
+    // One bad track should not stall the rotation. Drop it and let the next
+    // tick take the one after it.
+    debugLine("house track failed: " + (error.message || error));
+    houseTrack = null;
   }
 }
 
@@ -1763,15 +1852,6 @@ function paintQueue(waiting) {
   }
 }
 
-// Keep the display honest when Apple advances a playlist on its own.
-setInterval(async () => {
-  if (music && music.isPlaying && !currentQueueId && !onYouTube
-      && music.nowPlayingItem) {
-    const item = music.nowPlayingItem;
-    paintNowPlaying(item.title, item.artistName, "");
-    if (item.id) paintArtwork(sized((await songDetails(item.id)).artwork, 900));
-  }
-}, 5000);
 </script>
 
 </body>
