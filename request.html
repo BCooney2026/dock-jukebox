@@ -217,7 +217,11 @@ async function api(action, params) {
   url.searchParams.set("action", action);
   Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
 
-  const response = await fetch(url);
+  // Browsers cache repeated GETs to the same address. Without this the player
+  // replays the first answer forever and never sees a new request.
+  url.searchParams.set("nocache", Date.now() + "" + Math.random());
+
+  const response = await fetch(url, { cache: "no-store" });
   return await response.json();
 }
 
