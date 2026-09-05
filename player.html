@@ -8,7 +8,7 @@
 <title>Dock Jukebox</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Josefin+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --ink: #0c0a09;
@@ -111,23 +111,36 @@
     background: linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0));
     pointer-events: none;
   }
-  /* The title card fades out on its own and nothing replaces it, so the left
-     of the screen empties and stays empty. The right column carries the
-     credit and the queue for the whole song. */
+  /* The MTV lower third. Four lines, lower left, artist first then song,
+     album, label. Plain white with a hard drop shadow, which is what a
+     broadcast character generator produced and what made it readable over
+     any footage. No box, no colour, no accent: that is the whole look. */
   #vcard {
     min-width: 0;
-    transition: opacity 1s ease;
+    font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
+    color: #fff;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.85);
+    line-height: 1.24;
+    opacity: 0;
+    transition: opacity 0.45s ease;
   }
-  #vcard.hidden { opacity: 0; }
+  #vcard.up { opacity: 1; }
 
-  .vtitle {
-    font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: clamp(30px, 7vh, 86px);
-    line-height: 0.95;
-  }
   .vartist {
-    font-size: clamp(15px, 2.6vh, 30px);
-    color: rgba(247,241,230,0.72);
+    font-weight: 700;
+    font-size: clamp(22px, 4.6vh, 56px);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .vtitle {
+    font-weight: 600;
+    font-size: clamp(19px, 3.9vh, 47px);
+  }
+  .valbum,
+  .vlabel {
+    font-weight: 400;
+    font-size: clamp(15px, 2.8vh, 33px);
+    color: rgba(255,255,255,0.9);
   }
 
   .vright {
@@ -453,8 +466,10 @@
   <div id="ytframe"><div id="ytmount"></div></div>
   <div id="videobar">
     <div id="vcard">
-      <div class="vtitle" id="vtitle"></div>
       <div class="vartist" id="vartist"></div>
+      <div class="vtitle" id="vtitle"></div>
+      <div class="valbum" id="valbum"></div>
+      <div class="vlabel" id="vlabel"></div>
     </div>
     <div class="vright">
       <div id="vnext"></div>
@@ -583,10 +598,10 @@ const NOT_THE_VIDEO = [
   "unofficial", "montage", "my version", "made by", "amv"
 ];
 
-// How long the song title and artist stay on screen over a video before they
-// fade out and hand the corner over to the up-next list. MTV's music video
-// cards ran roughly eight to ten seconds, longer than a news lower third.
+// The MTV lower third comes up a few seconds into the video rather than on the
+// first frame, holds, then fades. TITLE_SECONDS is how long it holds.
 // The requester's name is not affected and stays up for the whole song.
+const TITLE_DELAY_SECONDS = 4;
 const TITLE_SECONDS = 10;
 
 // How often to check the queue, in milliseconds.
@@ -1240,50 +1255,75 @@ function hideVideoElement() {
 }
 
 
-// Cancels the pending title-card fade when a new song starts before the old
-// one has finished fading, which would otherwise leave two timers racing.
-let titleTimer = null;
+// Cancels pending lower-third timers when a new song starts before the old
+// card has finished its run, which would otherwise leave timers racing.
+let titleTimers = [];
 
-function showVideoStage(on, title, artist, by) {
+function clearTitleTimers() {
+  titleTimers.forEach(clearTimeout);
+  titleTimers = [];
+}
+
+function showVideoStage(on, title, artist, by, album, label) {
   el("videostage").classList.toggle("on", on);
 
-  clearTimeout(titleTimer);
+  clearTitleTimers();
+  el("vcard").classList.remove("up");
+
   if (!on) return;
 
-  el("vtitle").textContent = title;
   el("vartist").textContent = artist || "";
+  el("vtitle").textContent = title || "";
+  el("valbum").textContent = album || "";
+  el("vlabel").textContent = label || "";
   el("vcredit").textContent = by ? "Requested by " + by : "";
 
-  // Every song starts with the title card up. It fades on its own and nothing
-  // takes its place, which is what leaves the picture clean afterwards.
-  el("vcard").classList.remove("hidden");
+  // In a few seconds after the video starts, hold, then out. Nothing takes its
+  // place, so the picture is clean for the rest of the song.
+  titleTimers.push(setTimeout(() => {
+    el("vcard").classList.add("up");
+  }, TITLE_DELAY_SECONDS * 1000));
 
-  titleTimer = setTimeout(() => {
-    el("vcard").classList.add("hidden");
-  }, TITLE_SECONDS * 1000);
+  titleTimers.push(setTimeout(() => {
+    el("vcard").classList.remove("up");
+  }, (TITLE_DELAY_SECONDS + TITLE_SECONDS) * 1000));
 }
 
 
 /**
  * One Apple lookup for everything the player needs about a song that the queue
- * sheet does not store: the artwork, and how long the track runs. The length is
- * what the YouTube fallback measures its candidates against.
+ * sheet does not store: artwork, running time, album, and record label.
+ *
+ * The album relationship is included because the record label lives on the
+ * album rather than the song, and the MTV-style lower third wants all four.
  */
 async function songDetails(songId) {
   try {
     const response = await fetch(
-      "https://api.music.apple.com/v1/catalog/us/songs/" + songId,
+      "https://api.music.apple.com/v1/catalog/us/songs/" + songId
+        + "?include=albums",
       { headers: { Authorization: "Bearer " + DEVELOPER_TOKEN } }
     );
     const data = await response.json();
-    const attributes = data.data[0].attributes;
+    const song = data.data[0];
+    const attributes = song.attributes;
+
+    let label = "";
+    try {
+      const album = song.relationships.albums.data[0];
+      label = album.attributes.recordLabel || "";
+    } catch (error) {
+      // Some tracks have no album relationship. The line is simply left off.
+    }
 
     return {
       artwork: attributes.artwork.url,
-      durationMs: attributes.durationInMillis || 0
+      durationMs: attributes.durationInMillis || 0,
+      album: attributes.albumName || "",
+      label: label
     };
   } catch (error) {
-    return { artwork: null, durationMs: 0 };
+    return { artwork: null, durationMs: 0, album: "", label: "" };
   }
 }
 
@@ -1474,13 +1514,13 @@ async function playSong(songId, title, artist, by) {
 
   if (video) {
     await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
-    showVideoStage(true, title, artist, by);
+    showVideoStage(true, title, artist, by, details.album, details.label);
     chaseVideoElement();
     setStatus("playing a video", true);
   } else if (backup) {
     hideVideoElement();
     playYouTube(backup);
-    showVideoStage(true, title, artist, by);
+    showVideoStage(true, title, artist, by, details.album, details.label);
     setStatus("playing a video from YouTube", true);
   } else {
     await music.setQueue({ song: songId, startPlaying: true });
