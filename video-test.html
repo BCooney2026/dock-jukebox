@@ -44,7 +44,43 @@
     overflow: hidden;
     margin-bottom: 16px;
   }
-  #screen video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #screen { position: relative; z-index: 1; }
+
+  /* MusicKit injects its own video element and likes to position it over the
+     entire page, which swallows every click. Pin it inside its box. */
+  #screen video,
+  #screen > * {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    z-index: auto !important;
+    object-fit: contain;
+    background: #000;
+  }
+
+  /* Anything it drops directly on the page instead gets the same treatment. */
+  body > video,
+  body > div[class*="apple-music"],
+  body > div[id*="apple-music"] {
+    position: fixed !important;
+    left: 22px !important;
+    top: 22px !important;
+    width: 320px !important;
+    height: 180px !important;
+    z-index: 5 !important;
+  }
+
+  #stop {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 9999;
+    background: #e2483d;
+    color: #fff;
+  }
 
   ul { list-style: none; padding: 0; margin: 0; max-width: 720px; }
   li {
@@ -93,6 +129,8 @@
 </div>
 
 <div id="screen"></div>
+
+<button id="stop">Stop video</button>
 
 <ul id="results"></ul>
 
@@ -198,6 +236,11 @@ function show(video) {
   li.append(img, meta, button);
   el("results").appendChild(li);
 }
+
+el("stop").addEventListener("click", () => {
+  if (music) music.stop();
+  log("Stopped.");
+});
 
 async function play(video) {
   try {
