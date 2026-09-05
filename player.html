@@ -52,6 +52,61 @@
       linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.25));
   }
 
+  #videostage {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 6;
+  }
+  #videostage.on { display: block; }
+
+  #screen { position: absolute; inset: 0; }
+
+  /* MusicKit injects its own video element and likes to position it over the
+     whole page. Pin it inside the box instead. */
+  #screen video,
+  #screen > * {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain;
+    background: #000;
+  }
+
+  #videobar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 8vh 4vw 4vh;
+    background: linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0));
+    pointer-events: none;
+  }
+  .vtitle {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(30px, 7vh, 86px);
+    line-height: 0.95;
+  }
+  .vartist {
+    font-size: clamp(15px, 2.6vh, 30px);
+    color: rgba(247,241,230,0.72);
+  }
+  .vcredit {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(14px, 2vh, 24px);
+    letter-spacing: 0.1em;
+    color: var(--amber);
+    white-space: nowrap;
+  }
+
   #stage {
     position: relative;
     height: 100%;
@@ -290,6 +345,17 @@
 <div id="backdrop"></div>
 <div id="scrim"></div>
 
+<div id="videostage">
+  <div id="screen"></div>
+  <div id="videobar">
+    <div>
+      <div class="vtitle" id="vtitle"></div>
+      <div class="vartist" id="vartist"></div>
+    </div>
+    <div class="vcredit" id="vcredit"></div>
+  </div>
+</div>
+
 <div id="stage">
 
   <div class="bar">
@@ -338,6 +404,9 @@ const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJ
 // anything. Open a playlist on music.apple.com and copy the pl.xxxx from the
 // URL. Leave blank for silence between requests.
 const HOUSE_PLAYLIST = "";
+
+// Play the music video when Apple has one. Set to false for audio only.
+const PLAY_VIDEOS = true;
 
 // How often to check the queue, in milliseconds.
 const POLL_MS = 4000;
@@ -418,6 +487,63 @@ async function publicAddress() {
 
   return null;
 }
+
+/**
+ * Finds the official music video for a queued song, or null if Apple does not
+ * have one. Matches on artist so a cover version does not sneak in, and skips
+ * anything explicit for the same reason the audio side does.
+ */
+async function musicVideoFor(title, artist) {
+  try {
+    const response = await music.api.music("/v1/catalog/us/search", {
+      term: title + " " + artist,
+      types: ["music-videos"],
+      limit: 8
+    });
+
+    const found = response.data.results["music-videos"];
+    if (!found) return null;
+
+    const wanted = String(artist || "").toLowerCase();
+
+    const match = found.data.filter(video => {
+      if (video.attributes.contentRating === "explicit") return false;
+      const by = video.attributes.artistName.toLowerCase();
+      return by === wanted || by.indexOf(wanted) !== -1 || wanted.indexOf(by) !== -1;
+    })[0];
+
+    return match || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+
+/**
+ * MusicKit tears its video element down between songs, so the container gets
+ * handed back every time and anything it builds loose on the page gets
+ * dragged into the box.
+ */
+function attachScreen() {
+  music.videoContainerElement = el("screen");
+
+  const screen = el("screen");
+  if (screen.querySelector("video")) return;
+
+  const stray = document.querySelector("video");
+  if (stray) screen.appendChild(stray);
+}
+
+
+function showVideoStage(on, title, artist, by) {
+  el("videostage").classList.toggle("on", on);
+  if (!on) return;
+
+  el("vtitle").textContent = title;
+  el("vartist").textContent = artist || "";
+  el("vcredit").textContent = by ? "Requested by " + by : "";
+}
+
 
 /** Looks up album art for a song. The queue sheet does not store artwork. */
 async function artworkFor(songId) {
@@ -559,11 +685,28 @@ async function playRequest(item) {
     // Google Sheets hands back numeric IDs as numbers. MusicKit only accepts
     // strings and fails with "could not be resolved" on anything else.
     const songId = String(item.SongID).trim();
-    await music.setQueue({ song: songId, startPlaying: true });
+
+    music.stop();
+    attachScreen();
+
+    const video = PLAY_VIDEOS
+      ? await musicVideoFor(item.Title, item.Artist)
+      : null;
+
+    if (video) {
+      await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
+      showVideoStage(true, item.Title, item.Artist, item.RequestedBy);
+      setTimeout(attachScreen, 600);
+      setTimeout(attachScreen, 2000);
+      setStatus("playing a video", true);
+    } else {
+      await music.setQueue({ song: songId, startPlaying: true });
+      showVideoStage(false);
+      setStatus("no video, playing the track", true);
+    }
 
     paintNowPlaying(item.Title, item.Artist, item.RequestedBy);
     paintArtwork(sized(await artworkFor(songId), 900));
-    setStatus("playing a request", true);
   } catch (error) {
     playbackError = error && error.message ? error.message : String(error);
     debugLine("PLAYBACK FAILED: " + playbackError);
@@ -576,6 +719,7 @@ async function playRequest(item) {
 /** Falls back to the house playlist so the dock is never silent. */
 async function playHouse() {
   if (!HOUSE_PLAYLIST) {
+    showVideoStage(false);
     paintNowPlaying("Nothing playing", "", "");
     paintArtwork(null);
     if (!playbackError) {
