@@ -245,10 +245,38 @@ el("stop").addEventListener("click", () => {
 async function play(video) {
   try {
     log("Starting: " + video.attributes.name + "  id " + video.id);
+
+    // MusicKit tears its video element down between songs. Handing it the
+    // container again before every song is what keeps picture coming back.
+    music.stop();
+    music.videoContainerElement = el("screen");
+
     await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
+
+    // If it built the video somewhere else anyway, drag it back into the box.
+    setTimeout(adoptVideoElement, 600);
+    setTimeout(adoptVideoElement, 2000);
+
     log("PLAYING. If you see picture and hear sound, the video jukebox works.");
   } catch (error) {
     log("VIDEO PLAYBACK FAILED: " + (error.message || error));
+  }
+}
+
+/**
+ * Finds whatever video element MusicKit created and makes sure it is sitting
+ * inside our box rather than loose on the page or detached entirely.
+ */
+function adoptVideoElement() {
+  const screen = el("screen");
+  if (screen.querySelector("video")) return;
+
+  const stray = document.querySelector("video");
+  if (stray) {
+    screen.appendChild(stray);
+    log("Reattached the video element.");
+  } else {
+    log("NO VIDEO ELEMENT EXISTS. Audio only for this one.");
   }
 }
 </script>
