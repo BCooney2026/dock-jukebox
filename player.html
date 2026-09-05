@@ -235,9 +235,10 @@ async function unlockAudio() {
     music.volume = 0;
     await music.setQueue({ song: "251002253", startPlaying: true });
     await new Promise(resolve => setTimeout(resolve, 400));
+    console.log("JUKEBOX: audio unlocked, isPlaying =", music.isPlaying);
     music.stop();
   } catch (error) {
-    // Nothing to do. If this failed, the first request will show the problem.
+    console.error("JUKEBOX: audio unlock failed", error);
   } finally {
     music.volume = 1;
   }
@@ -292,14 +293,16 @@ async function playRequest(item) {
   await api("markPlaying", { queueId: item.QueueID });
 
   try {
+    console.log("JUKEBOX: starting", item.Title, "songId", item.SongID);
     await music.setQueue({ song: item.SongID, startPlaying: true });
+    console.log("JUKEBOX: setQueue returned, isPlaying =", music.isPlaying);
     showNowPlaying(item.Title, item.Artist, item.RequestedBy);
     setStatus("playing a request", true);
   } catch (error) {
-    // Bad track. Retire it so it does not jam the queue forever.
+    console.error("JUKEBOX: playback failed", error);
     await api("markPlayed", { queueId: item.QueueID });
     currentQueueId = null;
-    setStatus("skipped a track that would not play");
+    setStatus("could not play: " + error.message);
   }
 }
 
