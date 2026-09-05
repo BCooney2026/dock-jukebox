@@ -1440,6 +1440,23 @@ async function tick() {
   // whatever the server is currently enforcing rather than its own copy.
   if (state.banned) bannedWords = state.banned;
 
+  // An admin is waiting and somebody else's song is on. Hand the floor over.
+  // The displaced song goes back to waiting rather than being marked played,
+  // so whoever asked for it keeps their turn and hears it next.
+  //
+  // A station track needs no handling here. Nothing is marked playing while
+  // one is on, so the API never raises this flag, and the ordinary request
+  // path already cuts the station off.
+  if (state.interrupt && currentQueueId) {
+    debugLine("admin request, handing the floor over");
+    await api("requeue", { queueId: currentQueueId });
+    currentQueueId = null;
+    trackFinished = false;
+    heardItPlaying = false;
+    music.stop();
+    stopYouTube();
+  }
+
   if (currentQueueId) {
     if (trackFinished) {
       await api("markPlayed", { queueId: currentQueueId });
