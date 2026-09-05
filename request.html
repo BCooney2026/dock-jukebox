@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0c0a09">
-<title>Dock Jukebox</title>
+<title>Cooney Provisions Video Jukebox</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
@@ -43,12 +43,24 @@
     padding: max(12px, env(safe-area-inset-top)) 16px 12px;
     border-bottom: 1px solid var(--line);
   }
+  /* The lockup replaces the old typed name entirely. It is wide rather than
+     square, so it takes the space the wordmark had rather than sitting beside
+     anything. Width is what gets set; the height follows the artwork. */
   .wordmark {
-    font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: 22px;
-    letter-spacing: 0.14em;
-    color: var(--amber);
+    display: block;
+    line-height: 0;
   }
+  .wordmark img {
+    width: 190px;
+    max-width: 52vw;
+    height: auto;
+    display: block;
+  }
+  /* Tapping the lockup goes back to the portal, the same way it does across
+     the rest of the suite. With no portal address set it is not a link at all,
+     rather than a link that goes nowhere. */
+  a.wordmark { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  a.wordmark:active img { opacity: 0.7; }
   .topline {
     display: flex;
     align-items: baseline;
@@ -291,7 +303,8 @@
     text-align: center;
     border-bottom: 1px solid var(--line);
   }
-  .gatehead .wordmark { font-size: 30px; margin-bottom: 6px; }
+  .gatehead .wordmark { margin: 0 auto 14px; }
+  .gatehead .wordmark img { width: 290px; max-width: 78vw; }
   .gatehead p { color: var(--dim); margin: 0; }
   .gatelist {
     flex: 1;
@@ -329,7 +342,7 @@
 
 <header>
   <div class="topline">
-    <div class="wordmark">Cooney Provisions Jukebox</div>
+    <div class="wordmark" id="mast"></div>
     <button class="signedas" id="signedas"></button>
   </div>
   <div class="search">
@@ -380,7 +393,7 @@
 
 <div id="gate">
   <div class="gatehead">
-    <div class="wordmark">Cooney Provisions Jukebox</div>
+    <div class="wordmark" id="gatemast"></div>
     <p>Sign in with your work account to request a song.</p>
   </div>
   <div class="gatelist" id="gatelist">
@@ -402,6 +415,20 @@ const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJ
 
 // How often the queue refreshes, in milliseconds.
 const REFRESH_MS = 8000;
+
+// The lockup, and where tapping it goes.
+//
+// Same behaviour as the rest of the suite: the logo is the way back to the
+// portal from any screen, including the sign-in screen, so nobody ever lands
+// somewhere with no way out. Leave PORTAL_URL blank and it draws as a plain
+// image rather than a link that goes nowhere.
+//
+// The masthead .gs from the suite is deliberately NOT used here. It works by
+// Apps Script scriptlets, which only evaluate in a template served by
+// createTemplateFromFile. This page is a static file on GitHub Pages, so those
+// lines would print on screen as raw text.
+const LOGO_URL = "cp-music-tv.png";
+const PORTAL_URL = "";
 
 // Sign in with Google. Public by design: a client ID only works from the
 // origin authorised alongside it in the Cloud console, and every token it
@@ -708,6 +735,37 @@ el("term").addEventListener("keydown", event => {
 // whose name goes on the request.
 // ---------------------------------------------------------------------------
 
+/**
+ * Draws the lockup into every place that carries it.
+ *
+ * Built here rather than written into the markup twice, so the image address
+ * and the portal address each exist once.
+ */
+function paintMastheads() {
+  ["mast", "gatemast"].forEach(id => {
+    const box = el(id);
+    if (!box) return;
+
+    const image = document.createElement("img");
+    image.src = LOGO_URL;
+    image.alt = "Cooney Provisions Video Jukebox";
+
+    box.innerHTML = "";
+
+    if (PORTAL_URL) {
+      const link = document.createElement("a");
+      link.className = "wordmark";
+      link.href = PORTAL_URL;
+      link.appendChild(image);
+      box.appendChild(link);
+      box.classList.remove("wordmark");
+    } else {
+      box.appendChild(image);
+    }
+  });
+}
+
+
 function showSignedAs() {
   el("signedas").textContent = userName || "";
 }
@@ -805,6 +863,7 @@ el("signedas").addEventListener("click", () => {
 });
 
 
+paintMastheads();
 startSignIn();
 identify();
 
