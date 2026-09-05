@@ -95,6 +95,24 @@
   .upnext li { font-size: 18px; padding: 3px 0; }
   .upnext .who { color: var(--muted); }
 
+  #debug {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 30vh;
+    overflow: auto;
+    background: #000;
+    color: #7fff7f;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 8px 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    z-index: 9;
+  }
+
   #start {
     position: fixed;
     inset: 0;
@@ -142,6 +160,8 @@
   <h2>Up next</h2>
   <ol id="queue"></ol>
 </div>
+
+<div id="debug"></div>
 
 <div id="start">
   <p>This iPad is the jukebox. Sign in once, then leave this page open and put the screen to sleep. Do not close it.</p>
@@ -194,11 +214,22 @@ async function api(action, params) {
 
   try {
     const response = await fetch(url);
-    return await response.json();
+    const body = await response.text();
+    debugLine(action + " -> HTTP " + response.status + " " + body.slice(0, 400));
+    return JSON.parse(body);
   } catch (error) {
+    debugLine(action + " -> FAILED " + error.message);
     setStatus("cannot reach the queue");
     return null;
   }
+}
+
+/** Prints one line to the black readout at the bottom of the screen. */
+function debugLine(text) {
+  const box = el("debug");
+  const stamp = new Date().toLocaleTimeString();
+  box.textContent = stamp + "  " + text + "\n" + box.textContent;
+  box.textContent = box.textContent.split("\n").slice(0, 12).join("\n");
 }
 
 document.addEventListener("musickitloaded", async () => {
