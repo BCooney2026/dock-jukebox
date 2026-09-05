@@ -207,14 +207,19 @@ document.addEventListener("musickitloaded", async () => {
     app: { name: "Dock Jukebox", build: "1.0.0" }
   });
 
-  if (music.isAuthorized) {
-    el("start").style.display = "none";
-    begin();
-  }
+  // The start button is never skipped, even when already signed in. Pressing it
+  // is what gives the browser permission to play audio later on a timer.
+  setStatus("ready to start");
 });
 
 el("startbtn").addEventListener("click", async () => {
-  await music.authorize();
+  el("startbtn").disabled = true;
+  el("startbtn").textContent = "Starting...";
+
+  if (!music.isAuthorized) {
+    await music.authorize();
+  }
+
   await unlockAudio();
   el("start").style.display = "none";
   begin();
