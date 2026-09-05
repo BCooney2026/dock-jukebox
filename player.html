@@ -194,6 +194,9 @@ let currentQueueId = null;
 
 // Guards against retiring a song before it has had a chance to start.
 let heardItPlaying = false;
+
+// Sticky so an error message is not wiped out by the next idle tick.
+let playbackError = null;
 let startedAt = 0;
 
 // How long to wait for a song to actually start before giving up on it.
@@ -334,10 +337,11 @@ async function playRequest(item) {
     showNowPlaying(item.Title, item.Artist, item.RequestedBy);
     setStatus("playing a request", true);
   } catch (error) {
-    console.error("JUKEBOX: playback failed", error);
+    debugLine("PLAYBACK FAILED: " + (error && error.message ? error.message : error));
+    playbackError = error && error.message ? error.message : String(error);
     await api("markPlayed", { queueId: item.QueueID });
     currentQueueId = null;
-    setStatus("could not play: " + error.message);
+    setStatus("could not play: " + playbackError);
   }
 }
 
@@ -345,7 +349,9 @@ async function playRequest(item) {
 async function playHouse() {
   if (!HOUSE_PLAYLIST) {
     showNowPlaying("Nothing playing", "", "");
-    setStatus("waiting for requests", true);
+    if (!playbackError) {
+      setStatus("waiting for requests", true);
+    }
     return;
   }
 
