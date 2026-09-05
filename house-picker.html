@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>House playlist picker</title>
+<style>
+  :root {
+    --ink: #0c0a09;
+    --amber: #ffa62b;
+    --cream: #f7f1e6;
+    --dim: rgba(247, 241, 230, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 26px 22px 60px;
+    background: var(--ink);
+    color: var(--cream);
+    font: 16px/1.5 Barlow, system-ui, sans-serif;
+  }
+
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p.lead { color: var(--dim); margin: 0 0 20px; max-width: 66ch; }
+
+  .row { display: flex; gap: 8px; margin-bottom: 20px; max-width: 760px; }
+  input {
+    flex: 1;
+    font: inherit;
+    padding: 12px 14px;
+    background: #17130f;
+    border: 1px solid rgba(247,241,230,0.14);
+    border-radius: 6px;
+    color: var(--cream);
+  }
+  button {
+    font: inherit;
+    padding: 12px 22px;
+    background: var(--amber);
+    color: var(--ink);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .suggest {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 22px;
+    max-width: 760px;
+  }
+  .suggest button {
+    background: none;
+    color: var(--cream);
+    border: 1px solid rgba(247,241,230,0.2);
+    padding: 7px 13px;
+    font-size: 14px;
+  }
+
+  ul { list-style: none; padding: 0; margin: 0; max-width: 760px; }
+  li {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(247,241,230,0.1);
+  }
+  li img { width: 64px; height: 64px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
+  li .meta { flex: 1; min-width: 0; }
+  li b { display: block; font-size: 17px; }
+  li .curator { color: var(--dim); font-size: 14px; }
+  li code {
+    display: block;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    color: var(--amber);
+    margin-top: 3px;
+    word-break: break-all;
+  }
+  li button { padding: 9px 15px; font-size: 14px; flex-shrink: 0; }
+
+  #log {
+    margin-top: 22px;
+    max-width: 760px;
+    padding: 13px 15px;
+    border-radius: 6px;
+    background: #17130f;
+    border-left: 3px solid var(--amber);
+    white-space: pre-wrap;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<h1>House playlist picker</h1>
+<p class="lead">
+  Finds Apple Music's own curated playlists and shows you the ID the jukebox
+  needs. Pick a handful you would be happy hearing over the dock all day, copy
+  their IDs, and paste them into HOUSE_PLAYLISTS at the top of player.html.
+  Do the same for holiday ones into HOLIDAY_PLAYLISTS.
+</p>
+
+<div class="row">
+  <input id="term" placeholder="Search playlists" value="classic rock">
+  <button id="search">Search</button>
+</div>
+
+<div class="suggest" id="suggest"></div>
+
+<ul id="results"></ul>
+
+<div id="log">Loading MusicKit...</div>
+
+<script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" data-web-components async></script>
+<script>
+// ---------------------------------------------------------------------------
+// A throwaway tool, not part of the jukebox. It exists so nobody has to dig
+// playlist IDs out of Apple Music URLs by hand.
+//
+// Only Apple's own catalog playlists work as a house playlist. A playlist you
+// built yourself in your library lives behind your personal sign-in, and the
+// player reaches Apple with the developer token instead, so it cannot see it.
+// Everything this tool lists is a catalog playlist and will resolve.
+// ---------------------------------------------------------------------------
+
+// Developer token from make_music_token.py. Expires March 6, 2027.
+const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJVOTY4TVdaSjhUIiwiaWF0IjoxNzg4NTY5OTIyLCJleHAiOjE4MDQzNDY5MjJ9.gO46sv13ANw3wBn7jodVOBEKpjgfdUEpWfvpCV254YFTbX-_TPYbxJTxo2XVFEYAZdyu_Obm8girpiJvTBal3g";
+
+// Starting points that suit a warehouse: broad, well known, nothing niche.
+const STARTERS = [
+  "classic rock", "oldies", "80s hits", "90s hits", "motown",
+  "classic country", "soft rock", "yacht rock", "feel good",
+  "christmas classics", "holiday hits"
+];
+
+const el = id => document.getElementById(id);
+let music = null;
+
+function log(text) {
+  el("log").textContent = text;
+}
+
+document.addEventListener("musickitloaded", async () => {
+  try {
+    music = await MusicKit.configure({
+      developerToken: DEVELOPER_TOKEN,
+      app: { name: "House playlist picker", build: "1.0.0" }
+    });
+
+    el("search").disabled = false;
+    log("Ready. Search, or tap one of the suggestions above.");
+    run();
+  } catch (error) {
+    log("Could not start MusicKit: " + error.message);
+  }
+});
+
+STARTERS.forEach(term => {
+  const button = document.createElement("button");
+  button.textContent = term;
+  button.addEventListener("click", () => {
+    el("term").value = term;
+    run();
+  });
+  el("suggest").appendChild(button);
+});
+
+el("search").addEventListener("click", run);
+el("term").addEventListener("keydown", event => {
+  if (event.key === "Enter") run();
+});
+
+
+async function run() {
+  const term = el("term").value.trim();
+  if (!term || !music) return;
+
+  el("results").innerHTML = "";
+  log("Searching playlists for: " + term);
+
+  try {
+    const response = await music.api.music("/v1/catalog/us/search", {
+      term: term,
+      types: ["playlists"],
+      limit: 20
+    });
+
+    const found = response.data.results.playlists;
+    const playlists = found ? found.data : [];
+
+    if (playlists.length === 0) {
+      log("Nothing came back for that. Try broader words.");
+      return;
+    }
+
+    log("Found " + playlists.length + ". Copy the IDs you want.");
+    playlists.forEach(show);
+  } catch (error) {
+    log("Search failed: " + (error.message || error));
+  }
+}
+
+
+function show(playlist) {
+  const attributes = playlist.attributes || {};
+
+  const item = document.createElement("li");
+
+  const art = document.createElement("img");
+  art.alt = "";
+  if (attributes.artwork && attributes.artwork.url) {
+    art.src = attributes.artwork.url
+      .replace("{w}", "128").replace("{h}", "128");
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+
+  const name = document.createElement("b");
+  name.textContent = attributes.name || "Untitled";
+
+  const curator = document.createElement("div");
+  curator.className = "curator";
+  curator.textContent = attributes.curatorName || "";
+
+  const id = document.createElement("code");
+  id.textContent = playlist.id;
+
+  meta.append(name, curator, id);
+
+  const copy = document.createElement("button");
+  copy.textContent = "Copy ID";
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(playlist.id);
+      copy.textContent = "Copied";
+      setTimeout(() => { copy.textContent = "Copy ID"; }, 1500);
+    } catch (error) {
+      // Clipboard access can be refused. The ID is on screen either way.
+      copy.textContent = "Select it";
+    }
+  });
+
+  item.append(art, meta, copy);
+  el("results").appendChild(item);
+}
+</script>
+
+</body>
+</html>
