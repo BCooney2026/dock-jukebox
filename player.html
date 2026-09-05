@@ -202,6 +202,14 @@
     min-width: 0;
     flex: 0 1 auto;
   }
+  .card .pos {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(18px, 2.6vh, 30px);
+    color: var(--amber);
+    width: 1.2em;
+    text-align: center;
+    flex-shrink: 0;
+  }
   .card img {
     width: clamp(38px, 5.4vh, 60px);
     height: clamp(38px, 5.4vh, 60px);
@@ -385,6 +393,32 @@ async function api(action, params) {
   }
 }
 
+/**
+ * Finds this device's public address. Everyone on the shop WiFi shares one.
+ * Forced to IPv4 so the player and the phones are always comparing like for
+ * like. Falls back to Cloudflare if ipify is unreachable.
+ */
+async function publicAddress() {
+  try {
+    const response = await fetch("https://api.ipify.org?format=json");
+    const data = await response.json();
+    if (data.ip) return data.ip;
+  } catch (error) {
+    // Fall through to the backup.
+  }
+
+  try {
+    const response = await fetch("https://www.cloudflare.com/cdn-cgi/trace");
+    const text = await response.text();
+    const line = text.split("\n").filter(row => row.indexOf("ip=") === 0)[0];
+    if (line) return line.slice(3).trim();
+  } catch (error) {
+    // No address available.
+  }
+
+  return null;
+}
+
 /** Looks up album art for a song. The queue sheet does not store artwork. */
 async function artworkFor(songId) {
   try {
@@ -454,9 +488,25 @@ async function unlockAudio() {
 
 function begin() {
   setStatus("waiting for requests", true);
+  reportHome();
   tick();
   setInterval(tick, POLL_MS);
   setInterval(paintProgress, 1000);
+  setInterval(reportHome, 3600000);
+}
+
+/**
+ * Tells the API what the shop's public address is. This machine only ever runs
+ * on the shop network, so its address defines who is allowed to queue songs.
+ * Re-reported hourly so an ISP address change heals on its own.
+ */
+async function reportHome() {
+  const ip = await publicAddress();
+  if (!ip) {
+    debugLine("could not detect our own address");
+    return;
+  }
+  await api("reportHome", { ip: ip });
 }
 
 
@@ -596,9 +646,13 @@ function paintQueue(waiting) {
   }
 
   cards.innerHTML = "";
-  upcoming.forEach(item => {
+  upcoming.forEach((item, index) => {
     const card = document.createElement("div");
     card.className = "card";
+
+    const pos = document.createElement("div");
+    pos.className = "pos";
+    pos.textContent = index + 1;
 
     const img = document.createElement("img");
     artworkFor(String(item.SongID).trim()).then(template => {
@@ -613,7 +667,7 @@ function paintQueue(waiting) {
     who.textContent = item.RequestedBy;
     text.append(name, who);
 
-    card.append(img, text);
+    card.append(pos, img, text);
     cards.appendChild(card);
   });
 }
