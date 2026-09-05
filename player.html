@@ -834,6 +834,35 @@ function rememberVideo(songId, videoId) {
 }
 
 
+// YouTube error codes that mean this video is never coming back: a bad ID, a
+// deleted or private video, and embedding switched off by the owner. Code 5 is
+// left out on purpose. It is the player failing rather than the video being
+// gone, and forgetting on it would spend a search from a small daily allowance
+// on a video that is still perfectly fine.
+const GONE_FOR_GOOD = [2, 100, 101, 150];
+
+
+/**
+ * Throws away a remembered video that has since been deleted or locked down.
+ *
+ * Fan uploads are the only copy of plenty of older videos, and those channels
+ * disappear. Without this the dead ID would be remembered forever and every
+ * future request for the song would stall on a failed load before dropping to
+ * audio. Forgetting it means the next request quietly finds a live one.
+ */
+function forgetIfGone(songId, errorCode) {
+  if (!songId) return;
+  if (GONE_FOR_GOOD.indexOf(errorCode) === -1) return;
+
+  try {
+    localStorage.removeItem("yt" + PICKER_VERSION + ":" + songId);
+    debugLine("forgot the dead video for this song, will look again next time");
+  } catch (error) {
+    // Nothing to do. The worst case is it gets looked up again anyway.
+  }
+}
+
+
 // The YouTube API calls this by name once it has finished loading.
 function onYouTubeIframeAPIReady() {
   ytApiReady = true;
@@ -870,6 +899,7 @@ function playYouTube(videoId) {
       },
       onError: event => {
         debugLine("youtube error " + event.data + ", playing the audio instead");
+        forgetIfGone(currentSongId, event.data);
         fallBackToAudio();
       }
     }
