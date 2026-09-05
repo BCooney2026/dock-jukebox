@@ -439,6 +439,18 @@ const PLAY_VIDEOS = true;
 // Apple token does. Leave it blank to turn the YouTube fallback off entirely.
 const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKo";
 
+// Songs where the automatic search gets it wrong. The key is the Apple song
+// ID, which appears in the queue sheet and in the ?debug=1 strip. The value is
+// a YouTube video ID to play instead, or "" to force the audio track and never
+// search for that song again.
+//
+// This exists because the rules below deliberately require proof that a video
+// is official, and a handful of genuinely official older videos were only ever
+// uploaded by fans, so they cannot pass. Pin those here.
+const VIDEO_OVERRIDES = {
+  // "1714905027": "ZyaK3jo4Sl4"   // Punk Rock Girl, the real 1988 promo
+};
+
 // Words in a YouTube title that mean it is not the official video. A rejected
 // video just means the song plays as audio, so it is better to be strict here
 // than to put somebody's karaoke backing track on the dock speakers.
@@ -446,7 +458,8 @@ const NOT_THE_VIDEO = [
   "cover", "covered by", "karaoke", "reaction", "instrumental",
   "official audio", "full album", "compilation", "loop", "slowed",
   "sped up", "nightcore", "tribute", "live at", "live in", "live from",
-  "in the style of"
+  "in the style of", "fan video", "fan made", "fanmade", "fan edit",
+  "unofficial", "montage", "my version", "made by", "amv"
 ];
 
 // How often to check the queue, in milliseconds.
@@ -609,6 +622,13 @@ function bareTitle(title) {
 async function youtubeVideoFor(songId, title, artist, durationMs) {
   if (!YOUTUBE_KEY) return null;
 
+  // A hand-pinned answer beats everything, and costs no quota.
+  if (Object.prototype.hasOwnProperty.call(VIDEO_OVERRIDES, songId)) {
+    const pinned = VIDEO_OVERRIDES[songId];
+    debugLine("youtube: pinned by hand, " + (pinned || "audio only"));
+    return pinned || null;
+  }
+
   const remembered = rememberedVideo(songId);
   if (remembered !== undefined) {
     debugLine("youtube: remembered " + (remembered || "nothing suitable"));
@@ -709,6 +729,18 @@ async function pickVideo(candidates, title, artist, durationMs) {
     if (!mentions(name, bareTitle(title))) continue;
     if (!mentions(name, artist) && !sameArtist(channel, artist)) continue;
 
+    // Proof that this IS the official video, rather than merely the absence of
+    // anything suspicious. Plenty of songs never had a video, and for those
+    // YouTube still offers a well-made fan edit with the right song, the right
+    // length and the artist in the title, which passes every check above.
+    // Fade to Black is the worked example: no official video was ever made,
+    // and the search returns somebody's cut of Saving Private Ryan.
+    //
+    // Songs that fail this play as audio, which is the intended behaviour.
+    // Genuine official videos that only exist as fan uploads go in
+    // VIDEO_OVERRIDES at the top of this file.
+    if (!sameArtist(channel, artist) && !saysOfficial(name)) continue;
+
     const score = scoreVideo(video, artist, seconds, songSeconds);
     if (score > bestScore) {
       bestScore = score;
@@ -759,6 +791,19 @@ function scoreVideo(video, artist, seconds, songSeconds) {
  */
 function isTopicChannel(channel) {
   return / - topic$/.test(String(channel || "").toLowerCase().trim());
+}
+
+
+/**
+ * True when the title claims to be the official video. Uploaders who are
+ * posting the real thing say so; people posting their own edit generally do
+ * not, because saying it invites a takedown.
+ */
+function saysOfficial(title) {
+  const lower = String(title || "").toLowerCase();
+  return lower.indexOf("official video") !== -1
+    || lower.indexOf("official music video") !== -1
+    || lower.indexOf("official promo") !== -1;
 }
 
 
@@ -827,7 +872,7 @@ function secondsFrom(iso) {
  * those rules change and every remembered answer is quietly thrown away, so a
  * song that was matched badly gets a second chance under the new rules.
  */
-const PICKER_VERSION = 2;
+const PICKER_VERSION = 3;
 
 function rememberedVideo(songId) {
   try {
