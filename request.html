@@ -299,13 +299,6 @@
     -webkit-overflow-scrolling: touch;
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .deptline {
-    font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: 15px;
-    letter-spacing: 0.22em;
-    color: var(--dim);
-    padding: 18px 20px 8px;
-  }
   .person {
     display: flex;
     align-items: center;
@@ -721,7 +714,7 @@ function showSignedAs() {
   el("signedas").textContent = userName ? userName : "";
 }
 
-/** Builds the tap-your-name list, grouped by department. */
+/** Builds the tap-your-name list. One flat list, alphabetical by nickname. */
 async function loadPeople() {
   const list = el("gatelist");
 
@@ -739,17 +732,8 @@ async function loadPeople() {
   }
 
   list.innerHTML = "";
-  let lastDept = null;
 
   result.people.forEach(person => {
-    if (person.dept !== lastDept) {
-      const head = document.createElement("div");
-      head.className = "deptline";
-      head.textContent = person.dept;
-      list.appendChild(head);
-      lastDept = person.dept;
-    }
-
     const button = document.createElement("button");
     button.className = "person";
 
