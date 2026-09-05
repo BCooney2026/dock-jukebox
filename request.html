@@ -428,7 +428,8 @@ const REFRESH_MS = 8000;
 // createTemplateFromFile. This page is a static file on GitHub Pages, so those
 // lines would print on screen as raw text.
 const LOGO_URL = "cp-music-tv.png";
-const PORTAL_URL = "";
+const PORTAL_URL =
+  "https://script.google.com/a/macros/cooneyprovisions.com/s/AKfycby3N7ZZqdNUYTKkLOmhUplZ7ExgVoAPqd9K6cefHCAtpG5MS3-efOz0Mk4nrdVypIse_g/exec";
 
 // Sign in with Google. Public by design: a client ID only works from the
 // origin authorised alongside it in the Cloud console, and every token it
@@ -756,6 +757,7 @@ function paintMastheads() {
       const link = document.createElement("a");
       link.className = "wordmark";
       link.href = PORTAL_URL;
+      link.target = "_top";
       link.appendChild(image);
       box.appendChild(link);
       box.classList.remove("wordmark");
