@@ -444,8 +444,9 @@ const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKo";
 // than to put somebody's karaoke backing track on the dock speakers.
 const NOT_THE_VIDEO = [
   "cover", "covered by", "karaoke", "reaction", "instrumental",
-  "full album", "compilation", "loop", "slowed", "sped up", "nightcore",
-  "tribute", "live at", "live in", "live from", "in the style of"
+  "official audio", "full album", "compilation", "loop", "slowed",
+  "sped up", "nightcore", "tribute", "live at", "live in", "live from",
+  "in the style of"
 ];
 
 // How often to check the queue, in milliseconds.
@@ -601,7 +602,7 @@ async function youtubeVideoFor(songId, title, artist, durationMs) {
 
   try {
     const found = await youtubeSearch(title + " " + artist + " official video");
-    const chosen = await pickVideo(found, artist, durationMs);
+    const chosen = await pickVideo(found, title, artist, durationMs);
 
     rememberVideo(songId, chosen);
     debugLine("youtube: " + (chosen || "nothing suitable"));
@@ -632,10 +633,10 @@ async function youtubeSearch(term) {
 }
 
 
-/** The cheap call, at one unit for the whole batch. */
+/** The cheap call, at one unit for the whole batch however many parts we ask for. */
 async function youtubeDetails(ids) {
   const url = "https://www.googleapis.com/youtube/v3/videos"
-    + "?part=snippet,contentDetails,status"
+    + "?part=snippet,contentDetails,status,statistics"
     + "&id=" + ids
     + "&key=" + YOUTUBE_KEY;
 
@@ -648,13 +649,19 @@ async function youtubeDetails(ids) {
 
 
 /**
- * Picks the one candidate that is actually the song, and rejects the rest.
+ * Picks the best candidate rather than the first acceptable one.
  *
- * Search results are full of covers, karaoke tracks and hour-long loops with
- * keyword-stuffed titles, so nothing gets played unless it comes from a
- * channel belonging to the artist and runs about as long as the song does.
+ * This runs in two passes. The first throws out anything that must never play:
+ * covers, karaoke, hour-long uploads, and YouTube's auto-generated "- Topic"
+ * channels, which are album audio sitting behind a still of the album cover.
+ * The second ranks whatever is left and takes the winner.
+ *
+ * Ranking rather than requiring an official channel matters for older catalog.
+ * Plenty of pre-2000 videos were never uploaded by the label at all, and the
+ * only copy that exists is a fan rip. Demanding an official channel there does
+ * not get the official video, it just guarantees the album cover wins.
  */
-async function pickVideo(candidates, artist, durationMs) {
+async function pickVideo(candidates, title, artist, durationMs) {
   if (candidates.length === 0) return null;
 
   const ids = candidates.map(item => item.id.videoId).join(",");
@@ -666,20 +673,85 @@ async function pickVideo(candidates, artist, durationMs) {
   const songSeconds = Math.round((durationMs || 0) / 1000);
   const ceiling = songSeconds ? (songSeconds * 2) + 120 : 900;
 
+  let best = null;
+  let bestScore = 0;
+
   for (let i = 0; i < details.length; i++) {
     const video = details[i];
     const name = video.snippet.title;
+    const channel = video.snippet.channelTitle;
+    const seconds = secondsFrom(video.contentDetails.duration);
 
     if (!video.status.embeddable) continue;
+    if (isTopicChannel(channel)) continue;
     if (isFoul(name)) continue;
     if (looksWrong(name)) continue;
-    if (secondsFrom(video.contentDetails.duration) > ceiling) continue;
-    if (!sameArtist(video.snippet.channelTitle, artist)) continue;
+    if (seconds > ceiling) continue;
 
-    return video.id;
+    // The title has to actually name the song, and the artist has to appear
+    // somewhere, either in the title or in the channel. That is what keeps a
+    // stranger's unrelated upload out without demanding an official channel.
+    if (!mentions(name, title)) continue;
+    if (!mentions(name, artist) && !sameArtist(channel, artist)) continue;
+
+    const score = scoreVideo(video, artist, seconds, songSeconds);
+    if (score > bestScore) {
+      bestScore = score;
+      best = video.id;
+    }
   }
 
-  return null;
+  return best;
+}
+
+
+/**
+ * Ranks a surviving candidate. The artist's own channel wins when it exists,
+ * a title that says official video is worth a lot, and a length that matches
+ * Apple's to the second is the strongest sign it is the real thing. View count
+ * only breaks ties between otherwise equal candidates.
+ */
+function scoreVideo(video, artist, seconds, songSeconds) {
+  const name = String(video.snippet.title).toLowerCase();
+  const channel = video.snippet.channelTitle;
+  let score = 1;
+
+  // The artist's own channel, or their Vevo one, beats everything else.
+  if (sameArtist(channel, artist)) score += 60;
+
+  if (name.indexOf("official video") !== -1
+      || name.indexOf("official music video") !== -1) {
+    score += 25;
+  }
+
+  if (songSeconds) {
+    const off = Math.abs(seconds - songSeconds);
+    if (off <= 20) score += 30;
+    else if (off <= 60) score += 15;
+  }
+
+  const views = Number((video.statistics || {}).viewCount || 0);
+  if (views > 0) score += Math.min(30, Math.log10(views) * 4);
+
+  return score;
+}
+
+
+/**
+ * True for YouTube's auto-generated artist channels, which are named
+ * "Artist - Topic" and host album audio behind a still of the cover art.
+ * They match the artist name exactly, so they have to be named and excluded.
+ */
+function isTopicChannel(channel) {
+  return / - topic$/.test(String(channel || "").toLowerCase().trim());
+}
+
+
+/** True when a video title names the thing we are looking for. */
+function mentions(haystack, needle) {
+  const inside = squash(haystack);
+  const wanted = squash(needle);
+  return wanted.length > 0 && inside.indexOf(wanted) !== -1;
 }
 
 
@@ -735,10 +807,16 @@ function secondsFrom(iso) {
  * What YouTube said about a song last time. Returns undefined when the song
  * has never been looked up, and null when it was looked up and nothing was
  * worth playing, so a fruitless search is never repeated either.
+ *
+ * The number in the key is the version of the picking rules. Raise it whenever
+ * those rules change and every remembered answer is quietly thrown away, so a
+ * song that was matched badly gets a second chance under the new rules.
  */
+const PICKER_VERSION = 2;
+
 function rememberedVideo(songId) {
   try {
-    const stored = localStorage.getItem("yt:" + songId);
+    const stored = localStorage.getItem("yt" + PICKER_VERSION + ":" + songId);
     if (stored === null) return undefined;
     return stored === "none" ? null : stored;
   } catch (error) {
@@ -749,7 +827,7 @@ function rememberedVideo(songId) {
 
 function rememberVideo(songId, videoId) {
   try {
-    localStorage.setItem("yt:" + songId, videoId || "none");
+    localStorage.setItem("yt" + PICKER_VERSION + ":" + songId, videoId || "none");
   } catch (error) {
     // A full or disabled store only means the song gets looked up again.
   }
