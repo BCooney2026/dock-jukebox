@@ -331,6 +331,368 @@ async function playRequest(item) {
   await api("markPlaying", { queueId: item.QueueID });
 
   try {
+    // Google Sheets hands back numeric IDs as numbers. MusicKit only accepts
+    // strings and fails with "could not be resolved" on anything else.
+    const songId = String(item.SongID).trim();
+    await music.setQueue({ song: songId, startPlaying: true });
+    showNowPlaying(item.Title, item.Artist, item.RequestedBy);
+    setStatus("playing a request", true);
+  } catch (error) {
+    debugLine("PLAYBACK FAILED: " + (error && error.message ? error.message : error));
+    playbackError = error && error.message ? error.message : String(error);
+    await api("markPlayed", { queueId: item.QueueID });
+    currentQueueId = null;
+    setStatus("could not play: " + playbackError);
+  }
+}
+
+/** Falls back to the house playlist so the dock is never silent. */
+async function playHouse() {
+  if (!HOUSE_PLAYLIST) {
+    showNowPlaying("Nothing playing", "", "");
+    if (!playbackError) {
+      setStatus("waiting for requests", true);
+    }
+    return;
+  }
+
+  try {
+    await music.setQueue({ playlist: HOUSE_PLAYLIST, startPlaying: true });
+    setStatus("house playlist", true);
+  } catch (error) {
+    setStatus("house playlist would not load");
+  }
+}
+
+function showNowPlaying(title, artist, by) {
+  el("title").textContent = title;
+  el("artist").textContent = artist || "";
+  el("by").textContent = by ? "requested by " + by : "";
+
+  const item = music.nowPlayingItem;
+  el("art").src = item && item.artworkURL
+    ? item.artworkURL.replace("{w}", "600").replace("{h}", "600")
+    : "";
+}
+
+function showQueue(waiting) {
+  const list = el("queue");
+  list.innerHTML = "";
+
+  waiting.slice(1, 8).forEach(item => {
+    const li = document.createElement("li");
+    li.innerHTML = item.Title + ' <span class="who">' + item.RequestedBy + "</span>";
+    list.appendChild(li);
+  });
+}
+
+// Keep the now playing display honest when Apple advances a playlist itself.
+setInterval(() => {
+  if (music && music.isPlaying && !currentQueueId && music.nowPlayingItem) {
+    const item = music.nowPlayingItem;
+    showNowPlaying(item.title, item.artistName, "");
+  }
+}, 3000);
+</script>
+
+</body>
+</html>    font-size: 15px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 4vh;
+  }
+  .status.live { color: var(--amber); }
+
+  .now {
+    display: flex;
+    gap: 4vw;
+    align-items: center;
+    flex: 1;
+  }
+
+  .art {
+    width: 34vh;
+    height: 34vh;
+    background: var(--panel);
+    border-radius: 4px;
+    flex-shrink: 0;
+    object-fit: cover;
+  }
+
+  .title {
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(32px, 7vh, 88px);
+    line-height: 1.02;
+    margin: 0 0 0.2em;
+  }
+
+  .artist {
+    font-size: clamp(18px, 3vh, 32px);
+    color: var(--muted);
+    margin: 0 0 1em;
+  }
+
+  .by {
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    font-size: 20px;
+    letter-spacing: 0.06em;
+    color: var(--amber);
+  }
+
+  .upnext {
+    border-top: 1px solid #3a2e25;
+    padding-top: 2vh;
+    margin-top: 3vh;
+  }
+  .upnext h2 {
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin: 0 0 0.8em;
+    font-weight: 400;
+  }
+  .upnext ol { margin: 0; padding-left: 1.2em; }
+  .upnext li { font-size: 18px; padding: 3px 0; }
+  .upnext .who { color: var(--muted); }
+
+  #debug {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 30vh;
+    overflow: auto;
+    background: #000;
+    color: #7fff7f;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 8px 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    z-index: 9;
+  }
+
+  #start {
+    position: fixed;
+    inset: 0;
+    background: var(--walnut);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    z-index: 10;
+  }
+  #start p {
+    color: var(--muted);
+    max-width: 30em;
+    text-align: center;
+    padding: 0 2em;
+  }
+  #start button {
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    font-size: 28px;
+    letter-spacing: 0.06em;
+    padding: 18px 48px;
+    background: var(--amber);
+    color: var(--walnut);
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="status" id="status">connecting</div>
+
+<div class="now">
+  <img class="art" id="art" alt="">
+  <div>
+    <h1 class="title" id="title">Nothing playing</h1>
+    <p class="artist" id="artist"></p>
+    <div class="by" id="by"></div>
+  </div>
+</div>
+
+<div class="upnext">
+  <h2>Up next</h2>
+  <ol id="queue"></ol>
+</div>
+
+<div id="debug"></div>
+
+<div id="start">
+  <p>This iPad is the jukebox. Sign in once, then leave this page open and put the screen to sleep. Do not close it.</p>
+  <button id="startbtn">Start the jukebox</button>
+</div>
+
+<script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" data-web-components async></script>
+<script>
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+const API_URL = "https://script.google.com/a/macros/cooneyprovisions.com/s/AKfycbyBomjJGeAilm-QU3yqDdWED7wSV59ej3teTlcaCcpNCp-EcTKjZ3p3xA7CHNpU_pBq/exec";
+
+// Developer token from make_music_token.py. Expires March 6, 2027.
+const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJVOTY4TVdaSjhUIiwiaWF0IjoxNzg4NTY5OTIyLCJleHAiOjE4MDQzNDY5MjJ9.gO46sv13ANw3wBn7jodVOBEKpjgfdUEpWfvpCV254YFTbX-_TPYbxJTxo2XVFEYAZdyu_Obm8girpiJvTBal3g";
+
+// Apple Music playlist that fills the silence when nobody has requested
+// anything. Open a playlist in Apple Music on the web and copy the pl.xxxx
+// part of the URL. Leave blank for silence between requests.
+const HOUSE_PLAYLIST = "";
+
+// How often to check the queue, in milliseconds.
+const POLL_MS = 4000;
+
+// ---------------------------------------------------------------------------
+
+let music = null;
+let currentQueueId = null;
+
+// Guards against retiring a song before it has had a chance to start.
+let heardItPlaying = false;
+
+// Sticky so an error message is not wiped out by the next idle tick.
+let playbackError = null;
+let startedAt = 0;
+
+// How long to wait for a song to actually start before giving up on it.
+const START_TIMEOUT_MS = 20000;
+
+const el = id => document.getElementById(id);
+
+function setStatus(text, live) {
+  el("status").textContent = text;
+  el("status").classList.toggle("live", !!live);
+}
+
+/** Calls the Apps Script API. Returns the parsed response, or null on failure. */
+async function api(action, params) {
+  const url = new URL(API_URL);
+  url.searchParams.set("action", action);
+  Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
+
+  // Browsers cache repeated GETs to the same address. Without this the player
+  // replays the first answer forever and never sees a new request.
+  url.searchParams.set("nocache", Date.now() + "" + Math.random());
+
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    const body = await response.text();
+    debugLine(action + " -> HTTP " + response.status + " " + body.slice(0, 400));
+    return JSON.parse(body);
+  } catch (error) {
+    debugLine(action + " -> FAILED " + error.message);
+    setStatus("cannot reach the queue");
+    return null;
+  }
+}
+
+/** Prints one line to the black readout at the bottom of the screen. */
+function debugLine(text) {
+  const box = el("debug");
+  const stamp = new Date().toLocaleTimeString();
+  box.textContent = stamp + "  " + text + "\n" + box.textContent;
+  box.textContent = box.textContent.split("\n").slice(0, 12).join("\n");
+}
+
+document.addEventListener("musickitloaded", async () => {
+  music = await MusicKit.configure({
+    developerToken: DEVELOPER_TOKEN,
+    app: { name: "Dock Jukebox", build: "1.0.0" }
+  });
+
+  // The start button is never skipped, even when already signed in. Pressing it
+  // is what gives the browser permission to play audio later on a timer.
+  setStatus("ready to start");
+});
+
+el("startbtn").addEventListener("click", async () => {
+  el("startbtn").disabled = true;
+  el("startbtn").textContent = "Starting...";
+
+  if (!music.isAuthorized) {
+    await music.authorize();
+  }
+
+  await unlockAudio();
+  el("start").style.display = "none";
+  begin();
+});
+
+/**
+ * Browsers refuse to start audio unless a person clicked something. Songs get
+ * started later by a timer, which does not count, so we play one track silently
+ * during the button press to open the gate for everything after it.
+ */
+async function unlockAudio() {
+  try {
+    music.volume = 0;
+    await music.setQueue({ song: "251002253", startPlaying: true });
+    await new Promise(resolve => setTimeout(resolve, 400));
+    console.log("JUKEBOX: audio unlocked, isPlaying =", music.isPlaying);
+    music.stop();
+  } catch (error) {
+    console.error("JUKEBOX: audio unlock failed", error);
+  } finally {
+    music.volume = 1;
+  }
+}
+
+function begin() {
+  setStatus("waiting for requests", true);
+  tick();
+  setInterval(tick, POLL_MS);
+}
+
+/** The whole player loop. Runs every few seconds, forever. */
+async function tick() {
+  const state = await api("getQueue");
+  if (!state || !state.ok) return;
+
+  if (currentQueueId) {
+    if (music.isPlaying) {
+      // Once we have actually heard it, silence later means it ended.
+      heardItPlaying = true;
+    } else if (heardItPlaying) {
+      await api("markPlayed", { queueId: currentQueueId });
+      currentQueueId = null;
+    } else if (Date.now() - startedAt > START_TIMEOUT_MS) {
+      // It never started. Retire it rather than jam the queue.
+      await api("markPlayed", { queueId: currentQueueId });
+      currentQueueId = null;
+      setStatus("a track would not start");
+    }
+  }
+
+  // The office skipped it out from under us.
+  if (currentQueueId && !state.playing) {
+    currentQueueId = null;
+    music.stop();
+  }
+
+  if (!currentQueueId && state.waiting.length > 0) {
+    await playRequest(state.waiting[0]);
+  } else if (!currentQueueId && !music.isPlaying) {
+    await playHouse();
+  }
+
+  showQueue(state.waiting);
+}
+
+/** Plays one requested song and tells the sheet it started. */
+async function playRequest(item) {
+  currentQueueId = item.QueueID;
+  heardItPlaying = false;
+  startedAt = Date.now();
+  await api("markPlaying", { queueId: item.QueueID });
+
+  try {
     console.log("JUKEBOX: starting", item.Title, "songId", item.SongID);
     await music.setQueue({ song: item.SongID, startPlaying: true });
     console.log("JUKEBOX: setQueue returned, isPlaying =", music.isPlaying);
