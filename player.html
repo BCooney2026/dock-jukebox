@@ -145,6 +145,10 @@
     letter-spacing: 0.1em;
     color: var(--amber);
     white-space: nowrap;
+    align-self: stretch;
+    text-align: right;
+    border-top: 1px solid rgba(247,241,230,0.16);
+    padding-top: 1.2vh;
   }
 
   #vnext {
@@ -152,8 +156,6 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 0.8vh;
-    padding-top: 1.4vh;
-    border-top: 1px solid rgba(247,241,230,0.16);
     max-height: 52vh;
     overflow: hidden;
   }
@@ -179,17 +181,29 @@
     flex-shrink: 0;
     order: 2;
   }
-  #vnext .row .rtext { min-width: 0; }
+  /* Titles are capped at roughly the width of "Cats in the Cradle" so the
+     column has a straight left edge instead of one line running twice as far
+     out as the rest. Anything longer gets an ellipsis. */
+  #vnext .row .rtext {
+    min-width: 0;
+    max-width: 19ch;
+  }
   #vnext .row b {
     display: block;
     font-weight: 600;
     font-size: clamp(13px, 1.9vh, 22px);
     line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   #vnext .row span {
     display: block;
     font-size: clamp(11px, 1.5vh, 16px);
     color: rgba(247,241,230,0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   #vnext .none {
     color: rgba(247,241,230,0.45);
@@ -443,8 +457,8 @@
       <div class="vartist" id="vartist"></div>
     </div>
     <div class="vright">
-      <div class="vcredit" id="vcredit"></div>
       <div id="vnext"></div>
+      <div class="vcredit" id="vcredit"></div>
     </div>
   </div>
 </div>
@@ -494,10 +508,31 @@ const API_URL = "https://script.google.com/a/macros/cooneyprovisions.com/s/AKfyc
 // Developer token from make_music_token.py. Expires March 6, 2027.
 const DEVELOPER_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkMyTTZYTTU5OEIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJVOTY4TVdaSjhUIiwiaWF0IjoxNzg4NTY5OTIyLCJleHAiOjE4MDQzNDY5MjJ9.gO46sv13ANw3wBn7jodVOBEKpjgfdUEpWfvpCV254YFTbX-_TPYbxJTxo2XVFEYAZdyu_Obm8girpiJvTBal3g";
 
-// Apple Music playlist that fills the silence when nobody has requested
-// anything. Open a playlist on music.apple.com and copy the pl.xxxx from the
-// URL. Leave blank for silence between requests.
-const HOUSE_PLAYLIST = "";
+// Apple Music playlists that fill the silence when nobody has requested
+// anything. Silence is not only dull: iOS suspends a tab that stops making
+// noise, so on the iPad this is also what keeps the jukebox alive overnight.
+//
+// Put several in. One is picked at random whenever the queue runs dry, so the
+// dock does not hear the same running order every single day.
+//
+// These must be Apple's OWN catalog playlists, not ones built in a personal
+// library. The player reaches Apple with the developer token rather than the
+// account sign-in, so it cannot see a personal playlist. Use house-picker.html
+// to find IDs; everything it lists is a catalog playlist and will resolve.
+const HOUSE_PLAYLISTS = [
+  // "pl.xxxxxxxxxxxxxxxxxxxxxxxx",
+];
+
+// Used instead of the list above during the holiday window below. Leave empty
+// and nothing changes in December.
+const HOLIDAY_PLAYLISTS = [
+  // "pl.xxxxxxxxxxxxxxxxxxxxxxxx",
+];
+
+// When the holiday rotation takes over, inclusive. Month then day.
+// The window is allowed to run across the end of the year.
+const HOLIDAY_FROM = { month: 11, day: 25 };
+const HOLIDAY_UNTIL = { month: 12, day: 26 };
 
 // Play the music video when Apple has one. Set to false for audio only.
 const PLAY_VIDEOS = true;
@@ -1410,9 +1445,43 @@ async function playRequest(item) {
   }
 }
 
-/** Falls back to the house playlist so the dock is never silent. */
+/**
+ * True during the holiday window set at the top of the file. Written so the
+ * window may run across the end of the year, for example 25 November to 6
+ * January, without needing a special case.
+ */
+function inHolidaySeason() {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+
+  const started = month > HOLIDAY_FROM.month
+    || (month === HOLIDAY_FROM.month && day >= HOLIDAY_FROM.day);
+
+  const notOver = month < HOLIDAY_UNTIL.month
+    || (month === HOLIDAY_UNTIL.month && day <= HOLIDAY_UNTIL.day);
+
+  return HOLIDAY_FROM.month <= HOLIDAY_UNTIL.month
+    ? (started && notOver)
+    : (started || notOver);
+}
+
+
+/** One playlist at random from whichever set belongs to today. */
+function housePlaylist() {
+  const holiday = inHolidaySeason() && HOLIDAY_PLAYLISTS.length > 0;
+  const pool = holiday ? HOLIDAY_PLAYLISTS : HOUSE_PLAYLISTS;
+
+  if (pool.length === 0) return "";
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+
+/** Falls back to a house playlist so the dock is never silent. */
 async function playHouse() {
-  if (!HOUSE_PLAYLIST) {
+  const playlist = housePlaylist();
+
+  if (!playlist) {
     showVideoStage(false);
     paintNowPlaying("Nothing playing", "", "");
     paintArtwork(null);
@@ -1423,8 +1492,9 @@ async function playHouse() {
   }
 
   try {
-    await music.setQueue({ playlist: HOUSE_PLAYLIST, startPlaying: true });
-    setStatus("house playlist", true);
+    showVideoStage(false);
+    await music.setQueue({ playlist: playlist, startPlaying: true });
+    setStatus(inHolidaySeason() ? "holiday playlist" : "house playlist", true);
   } catch (error) {
     setStatus("house playlist would not load");
   }
