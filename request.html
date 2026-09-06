@@ -328,13 +328,17 @@
   .person b { font-weight: 600; font-size: 19px; }
   .person span { display: block; color: var(--dim); font-size: 15px; }
 
+  /* The greeting. Sits under the lockup, right aligned to the search button,
+     and is deliberately not a control: the only tappable thing in the header
+     is the logo, which goes to the portal. */
   .signedas {
-    font-size: 14px;
-    color: var(--dim);
-    background: none;
-    border: none;
-    padding: 0;
-    text-decoration: underline;
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: 17px;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+    text-align: right;
+    line-height: 1.15;
+    min-height: 1.15em;
   }
 </style>
 </head>
@@ -343,7 +347,7 @@
 <header>
   <div class="topline">
     <div class="wordmark" id="mast"></div>
-    <button class="signedas" id="signedas"></button>
+    <div class="signedas" id="signedas"></div>
   </div>
   <div class="search">
     <input id="term" placeholder="Search songs or artists" enterkeyhint="search">
@@ -768,8 +772,47 @@ function paintMastheads() {
 }
 
 
+// Greetings for the top of the page. One is picked at random each time the
+// page loads, so it is not the same line every morning for a year.
+//
+// Keep them short. The lockup is wide and this sits beside it on a phone, so
+// anything much past about thirty characters wraps awkwardly. No profanity:
+// this is on a screen at work, and the whole jukebox is built around not
+// putting things on the dock that shouldn't be there.
+const GREETINGS = [
+  "Take it away, NAME",
+  "The floor is yours, NAME",
+  "NAME has the aux",
+  "Rock the dock, NAME",
+  "You're on the air, NAME",
+  "Cue it up, NAME",
+  "Make it loud, NAME",
+  "NAME runs this hour",
+  "Let it rip, NAME",
+  "NAME picks, the dock listens",
+  "Hit us with it, NAME",
+  "Shake the rafters, NAME",
+  "NAME is on the decks",
+  "Turn it up, NAME",
+  "Play something good, NAME",
+  "The dock awaits, NAME",
+  "NAME, do your worst",
+  "Set list is yours, NAME",
+  "Back at it, NAME",
+  "NAME, wake the neighbours"
+];
+
+
 function showSignedAs() {
-  el("signedas").textContent = userName || "";
+  const box = el("signedas");
+
+  if (!userName) {
+    box.textContent = "";
+    return;
+  }
+
+  const line = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+  box.textContent = line.replace("NAME", userName);
 }
 
 
@@ -850,19 +893,6 @@ function startSignIn() {
   // still has the session, so this is not the interruption it sounds like.
   if (!idToken) google.accounts.id.prompt();
 }
-
-
-// Tapping the name in the corner signs out, which is the only way to hand the
-// phone to somebody else.
-el("signedas").addEventListener("click", () => {
-  idToken = "";
-  me = null;
-  userName = "";
-  sessionStorage.removeItem("jukeboxToken");
-  if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
-  showSignedAs();
-  showGate("Signed out.");
-});
 
 
 paintMastheads();
