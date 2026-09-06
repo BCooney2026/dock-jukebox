@@ -89,6 +89,11 @@
     position: absolute;
     inset: 0;
     z-index: 2;
+    /* The stage above this is pointer-events: none, which used to mean taps
+       aimed at the YouTube play button went straight through to the page and
+       zoomed it instead. Videos should never need a tap, but when one stalls
+       somebody has to be able to poke it. */
+    pointer-events: auto;
   }
   #ytframe.on { display: block; }
   #ytframe iframe {
@@ -589,6 +594,13 @@ const VIDEO_OVERRIDES = {
   // "1714905027": "ZyaK3jo4Sl4"   // Punk Rock Girl, the real 1988 promo
 };
 
+// The video the YouTube frame is parked on before anything is requested. It is
+// never watched and never heard: it is loaded so the frame has something to be
+// told to play during the Start press, which is what buys the right to play on
+// a timer afterwards. Any embeddable video works. If it ever goes dead the
+// debug strip says so and the only cost is the first video needing a tap.
+const YT_UNLOCK_VIDEO = "ZyaK3jo4Sl4";
+
 // Words in a YouTube title that mean it is not the official video. A rejected
 // video just means the song plays as audio, so it is better to be strict here
 // than to put somebody's karaoke backing track on the dock speakers.
@@ -625,7 +637,7 @@ let playbackError = null;
 // isPlaying when they finish, so waiting for that alone stalls the queue.
 let trackFinished = false;
 
-// The YouTube fallback player, built on demand and reused after that.
+// The YouTube fallback player. Built once at page load, reused for every video.
 let ytPlayer = null;
 let ytApiReady = false;
 let onYouTube = false;
@@ -1107,7 +1119,88 @@ function forgetIfGone(songId, errorCode) {
 // The YouTube API calls this by name once it has finished loading.
 function onYouTubeIframeAPIReady() {
   ytApiReady = true;
+  buildYouTubePlayer();
   debugLine("youtube player ready");
+}
+
+
+/**
+ * Builds the one YouTube player this page will ever use, silent and hidden,
+ * as soon as the API is available.
+ *
+ * WHY IT IS BUILT HERE AND NOT WHEN THE FIRST VIDEO IS NEEDED.
+ * A cross-origin iframe is only allowed to make noise if it was already in the
+ * page the last time somebody touched the screen. Building it on demand meant
+ * it appeared seconds after the Start press, inherited nothing, and parked on
+ * the poster frame waiting for a tap. That is fine on a Mac, where the rule is
+ * looser, and useless on the iPad, which is the only machine that matters.
+ * Built here, it is present for the Start press and may play on a timer for
+ * the rest of the session.
+ */
+function buildYouTubePlayer() {
+  if (ytPlayer) return;
+
+  ytPlayer = new YT.Player("ytmount", {
+    videoId: YT_UNLOCK_VIDEO,
+    playerVars: { autoplay: 0, playsinline: 1, rel: 0, controls: 0 },
+    events: {
+      onStateChange: event => {
+        // onYouTube is what separates a real song from the parked video and
+        // from the silent unlock. Without it the unlock would look like a
+        // song ending and the jukebox would skip its own first request.
+        if (event.data === YT.PlayerState.ENDED
+            && onYouTube
+            && (currentQueueId || houseTrack)) {
+          trackFinished = true;
+          debugLine("youtube video finished, advancing");
+        }
+      },
+      onError: event => {
+        if (!onYouTube) {
+          debugLine("youtube parked video is dead, change YT_UNLOCK_VIDEO");
+          return;
+        }
+        debugLine("youtube error " + event.data + ", playing the audio instead");
+        forgetIfGone(currentSongId, event.data);
+        fallBackToAudio();
+      }
+    }
+  });
+}
+
+
+/**
+ * Opens the gate for YouTube sound. Called during the Start press, next to
+ * unlockAudio, which does the same job for Apple.
+ *
+ * The parked video is played muted for a moment and stopped. The video is not
+ * the point. The point is that the play command goes out while the browser
+ * still counts a finger as having just touched the screen.
+ */
+async function unlockYouTube() {
+  if (!ytPlayer || !ytPlayer.playVideo) {
+    debugLine("youtube not ready at start, the first video may need a tap");
+    return;
+  }
+
+  // Shown, because a hidden frame is allowed to refuse to play. The Start
+  // screen is still up and covers all of this.
+  el("videostage").classList.add("on");
+  el("ytframe").classList.add("on");
+
+  try {
+    ytPlayer.mute();
+    ytPlayer.playVideo();
+    await new Promise(resolve => setTimeout(resolve, 600));
+    ytPlayer.stopVideo();
+  } catch (error) {
+    debugLine("youtube unlock failed: " + error.message);
+  } finally {
+    ytPlayer.unMute();
+    ytPlayer.setVolume(100);
+    el("ytframe").classList.remove("on");
+    el("videostage").classList.remove("on");
+  }
 }
 
 
@@ -1116,36 +1209,19 @@ function playYouTube(videoId) {
   onYouTube = true;
   el("ytframe").classList.add("on");
 
-  if (ytPlayer && ytPlayer.loadVideoById) {
-    ytPlayer.loadVideoById(videoId);
-    ytPlayer.unMute();
-    ytPlayer.setVolume(100);
+  // Normally already built at page load. This covers the API arriving late.
+  if (!ytPlayer) buildYouTubePlayer();
+
+  if (!ytPlayer || !ytPlayer.loadVideoById) {
+    debugLine("youtube player unavailable, playing the audio instead");
+    fallBackToAudio();
     return;
   }
 
-  ytPlayer = new YT.Player("ytmount", {
-    videoId: videoId,
-    playerVars: { autoplay: 1, playsinline: 1, rel: 0, controls: 0 },
-    events: {
-      onReady: event => {
-        event.target.unMute();
-        event.target.setVolume(100);
-        event.target.playVideo();
-      },
-      onStateChange: event => {
-        if (event.data === YT.PlayerState.ENDED
-            && (currentQueueId || houseTrack)) {
-          trackFinished = true;
-          debugLine("youtube video finished, advancing");
-        }
-      },
-      onError: event => {
-        debugLine("youtube error " + event.data + ", playing the audio instead");
-        forgetIfGone(currentSongId, event.data);
-        fallBackToAudio();
-      }
-    }
-  });
+  ytPlayer.loadVideoById(videoId);
+  ytPlayer.unMute();
+  ytPlayer.setVolume(100);
+  ytPlayer.playVideo();
 }
 
 
@@ -1360,6 +1436,7 @@ el("startbtn").addEventListener("click", async () => {
   }
 
   await unlockAudio();
+  await unlockYouTube();
   el("start").style.display = "none";
   begin();
 });
