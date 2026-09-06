@@ -336,12 +336,13 @@
      sentences rather than labels, so this is set in the body face rather than
      the condensed one, which would fight them. */
   .signedas {
-    font-size: 14px;
-    line-height: 1.35;
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 1.3;
     color: var(--amber);
     text-align: center;
-    max-width: 34ch;
-    min-height: 1.35em;
+    max-width: 32ch;
+    min-height: 1.3em;
   }
 </style>
 </head>
@@ -526,13 +527,44 @@ async function artworkFor(songId) {
 // Search
 // ---------------------------------------------------------------------------
 
+// Typing fires a search, so two things have to be handled that a button press
+// never had to. Waiting a moment after the last keystroke stops a search going
+// out for every letter of "fleetwood mac", and numbering the searches stops a
+// slow answer for "fle" landing after a fast one for "fleetwood" and replacing
+// the right results with stale ones.
+let typingTimer = null;
+let searchNumber = 0;
+
+const TYPING_PAUSE_MS = 280;
+const SHORTEST_TERM = 2;
+
+
+function onTyping() {
+  clearTimeout(typingTimer);
+
+  const term = el("term").value.trim();
+
+  if (term.length < SHORTEST_TERM) {
+    // Abandon anything in flight so a late answer cannot repopulate a box the
+    // person has just cleared.
+    searchNumber++;
+    el("results").innerHTML = "";
+    message("Search for something and hit Play to put it on the dock speakers.");
+    return;
+  }
+
+  typingTimer = setTimeout(runSearch, TYPING_PAUSE_MS);
+}
+
+
 async function runSearch() {
+  clearTimeout(typingTimer);
+
   const term = el("term").value.trim();
   if (!term) return;
 
-  el("term").blur();
+  const mine = ++searchNumber;
   message("Searching");
-  el("results").innerHTML = "";
 
   try {
     const response = await fetch(
@@ -544,9 +576,16 @@ async function runSearch() {
     if (!response.ok) throw new Error("Search is not answering right now.");
 
     const data = await response.json();
+
+    // A newer search has started since this one went out. Its answer is the
+    // one that matches what is on screen, so this one is dropped.
+    if (mine !== searchNumber) return;
+
     const found = data.results.songs ? data.results.songs.data : [];
     const songs = found.filter(isCleanEnough);
     const hidden = found.length - songs.length;
+
+    el("results").innerHTML = "";
 
     if (songs.length === 0) {
       message(hidden > 0
@@ -558,6 +597,9 @@ async function runSearch() {
 
     songs.forEach(showSong);
   } catch (error) {
+    // Same guard as above. A failure from an abandoned search must not put an
+    // error on screen underneath results that are perfectly fine.
+    if (mine !== searchNumber) return;
     message(error.message, true);
   }
 }
@@ -727,9 +769,19 @@ el("tab-play").addEventListener("click", () => showPane("play"));
 el("tab-queue").addEventListener("click", () => showPane("queue"));
 el("mini").addEventListener("click", () => showPane("queue"));
 
-el("go").addEventListener("click", runSearch);
+el("go").addEventListener("click", () => {
+  el("term").blur();
+  runSearch();
+});
+
+el("term").addEventListener("input", onTyping);
+
 el("term").addEventListener("keydown", event => {
-  if (event.key === "Enter") runSearch();
+  if (event.key !== "Enter") return;
+  // Enter is now only about dismissing the keyboard, since the results are
+  // already there by the time anybody reaches for it.
+  el("term").blur();
+  runSearch();
 });
 
 
