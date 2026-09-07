@@ -102,6 +102,78 @@
     border: 0;
   }
 
+  /* ---- The celebration card ----------------------------------------------
+     Full screen, between songs. Not a corner graphic and not a lower third:
+     the point is that everybody in the building looks up, so it takes the
+     whole picture for a few seconds the way a station ident would.
+
+     Built out of the same parts as the bug, deliberately. Same amber, same
+     scalloped disc, same hard outline. It should read as the same channel
+     doing something bigger, not as a different app. */
+  #celebrate {
+    position: fixed;
+    inset: 0;
+    z-index: 12;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2.5vh;
+    background: #0c0a09;
+    text-align: center;
+    pointer-events: none;
+  }
+  #celebrate.on { display: flex; }
+
+  #celebrate .kicker {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(20px, 4.5vh, 54px);
+    letter-spacing: 0.3em;
+    color: var(--amber);
+    opacity: 0;
+    animation: celebKicker 700ms ease-out 250ms forwards;
+  }
+  #celebrate .who {
+    font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(44px, 13vh, 170px);
+    line-height: 1;
+    color: #fff;
+    text-transform: uppercase;
+    text-shadow: 3px 3px 0 rgba(0,0,0,0.85);
+    opacity: 0;
+    animation: celebWho 900ms cubic-bezier(0.2, 1.2, 0.3, 1) 500ms forwards;
+  }
+  #celebrate .years {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(24px, 6.5vh, 80px);
+    letter-spacing: 0.12em;
+    color: var(--amber);
+    opacity: 0;
+    animation: celebKicker 700ms ease-out 1100ms forwards;
+  }
+  #celebrate .mark {
+    width: 26vw;
+    max-width: 520px;
+    opacity: 0;
+    animation: celebMark 900ms ease-out 1400ms forwards;
+  }
+
+  @keyframes celebKicker {
+    0%   { opacity: 0; transform: translateY(14px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes celebWho {
+    0%   { opacity: 0; transform: scale(2.2); filter: blur(12px); }
+    55%  { opacity: 1; transform: scale(0.94); filter: blur(0); }
+    78%  { transform: scale(1.04); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes celebMark {
+    0%   { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 0.85; transform: translateY(0); }
+  }
+
   /* ---- The network bug --------------------------------------------------
      Bottom left, and it has to be. Broadcast convention would put a bug
      opposite the character generator, which would mean bottom right, and that
@@ -912,6 +984,12 @@
 <div id="videostage">
   <div id="screen"></div>
   <div id="ytframe"><div id="ytmount"></div></div>
+  <div id="celebrate">
+    <div class="kicker" id="celebkicker"></div>
+    <div class="who" id="celebwho"></div>
+    <div class="years" id="celebyears"></div>
+    <img class="mark" src="cp-music-tv.png" alt="">
+  </div>
   <div id="bug">
     <div id="bugfx">
       <img src="cp-music-tv.png" alt="">
@@ -1973,6 +2051,95 @@ let cutWhenHeadlineEnds = false;
 let bugListening = false;
 
 
+// ---------------------------------------------------------------------------
+// Birthdays and work anniversaries
+//
+// The identity map already carries both, so nobody maintains a second list and
+// nobody has to remember to post anything. A driver's twentieth year comes up
+// on the dock TV because the office typed his start date once in 2005.
+//
+// The card plays BETWEEN songs, never over one. Interrupting somebody's
+// request to announce a birthday is how a nice feature becomes an annoying
+// one, and the gap between tracks was doing nothing anyway.
+// ---------------------------------------------------------------------------
+
+// How long the card holds, and how often the list is refreshed. The refresh
+// exists so a player left running for weeks notices the date changing without
+// anybody reloading it.
+const CELEBRATE_SECONDS = 7;
+const CELEBRATE_REFRESH_MS = 60 * 60 * 1000;
+
+// Today's people, and which of them has already been shown. Everyone gets one
+// card per song gap rather than all of them at once, so three birthdays on one
+// day is three moments across the morning instead of a wall of names.
+let celebrations = [];
+let celebrateNext = 0;
+let celebrateShownFor = "";
+
+
+/** Asks the API whose day it is, and starts again when the date rolls over. */
+async function loadCelebrations() {
+  try {
+    const answer = await api("getCelebrations", {});
+    if (!answer.ok) return;
+
+    if (answer.date !== celebrateShownFor) {
+      celebrateShownFor = answer.date;
+      celebrateNext = 0;
+    }
+
+    celebrations = answer.celebrations || [];
+
+    if (celebrations.length) {
+      debugLine("celebrations today: "
+        + celebrations.map(c => c.name + " " + c.kind).join(", "));
+    }
+  } catch (error) {
+    // A missing celebration is not worth a gap in the music.
+  }
+}
+
+
+/**
+ * Plays one celebration card, if anybody is owed one.
+ *
+ * Returns how long the caller should wait before starting the next song, so
+ * playback pauses for exactly as long as the card is up and not a moment more.
+ * Returns 0 when there is nothing to show, which is most days.
+ */
+function playCelebration() {
+  if (!celebrations.length) return 0;
+
+  const who = celebrations[celebrateNext % celebrations.length];
+  celebrateNext++;
+
+  const card = el("celebrate");
+
+  el("celebkicker").textContent = who.kind === "birthday"
+    ? "HAPPY BIRTHDAY"
+    : "CELEBRATING";
+  el("celebwho").textContent = who.name;
+
+  // Years only where the identity map actually had a start year, and never for
+  // a birthday. Nobody's age goes on a television.
+  el("celebyears").textContent =
+    (who.kind === "anniversary" && who.years > 0)
+      ? (who.years === 1 ? "1 YEAR WITH COONEY PROVISIONS"
+                         : who.years + " YEARS WITH COONEY PROVISIONS")
+      : "";
+
+  // Restart the animations. Same reflow trick as the bug: without it a second
+  // card reuses the finished ones and appears with no entrance at all.
+  card.classList.remove("on");
+  void card.offsetWidth;
+  card.classList.add("on");
+
+  setTimeout(() => card.classList.remove("on"), CELEBRATE_SECONDS * 1000);
+
+  return CELEBRATE_SECONDS * 1000;
+}
+
+
 /**
  * Fades the bug in and decides how this appearance will arrive and leave.
  *
@@ -2318,6 +2485,8 @@ function begin() {
   watchPlaybackState();
   setStatus("waiting for requests", true);
   reportHome();
+  loadCelebrations();
+  setInterval(loadCelebrations, CELEBRATE_REFRESH_MS);
   tick();
   setInterval(tick, POLL_MS);
   setInterval(paintProgress, 1000);
@@ -2504,6 +2673,12 @@ async function playRequest(item) {
   startedAt = Date.now();
   playbackError = null;
   await api("markPlaying", { queueId: item.QueueID });
+
+  // Between songs, never over one. The card holds the picture for a few
+  // seconds and the song starts after it, so a birthday never talks over
+  // somebody's request.
+  const wait = playCelebration();
+  if (wait) await new Promise(resolve => setTimeout(resolve, wait));
 
   try {
     // Google Sheets hands back numeric IDs as numbers. MusicKit only accepts
