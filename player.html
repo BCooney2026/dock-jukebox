@@ -102,33 +102,178 @@
     border: 0;
   }
 
-  /* The network bug. Top right, because the lower third owns the bottom left
-     and the two must never share an edge. Semi-transparent with a hard drop
-     shadow, which is how a broadcast bug stayed legible over a bright frame
-     without ever becoming the brightest thing on screen. It is a watermark,
-     not a title card: if anyone reads it on purpose it is too loud. */
+  /* ---- The network bug --------------------------------------------------
+     Bottom left. It shares that corner with the lower third, which is fine
+     because they never share a moment: the titles run from
+     TITLE_DELAY_SECONDS to TITLE_DELAY_SECONDS + TITLE_SECONDS, and the bug
+     does not appear until BUG_DELAY_SECONDS, well after they have gone. If
+     you shorten BUG_DELAY_SECONDS below about 16, check that.
+
+     Two nested elements on purpose. #bug owns whether it is on screen at all,
+     which is a plain opacity fade. #bugfx owns the entrance animation. Keeping
+     them apart means an animation that plays with opacity, like the flash,
+     cannot fight the fade, and adding a new animation later cannot break the
+     showing and hiding. */
   #bug {
     z-index: 9;
     position: fixed;
-    top: 3.5vh;
-    right: 3.5vw;
+    bottom: 4vh;
+    left: 4vw;
     width: 17vw;
     max-width: 340px;
     min-width: 150px;
     opacity: 0;
-    transform: translateY(-6px);
-    transition: opacity 900ms ease, transform 900ms ease;
+    transition: opacity 700ms ease;
     pointer-events: none;
   }
-  #bug.up {
-    opacity: 0.82;
-    transform: translateY(0);
+  #bug.up { opacity: 0.86; }
+
+  #bugfx {
+    position: relative;
+    transform-origin: bottom left;
   }
-  #bug img {
+
+  #bugfx img {
     width: 100%;
     display: block;
     filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85));
   }
+
+  /* The shimmer's moving highlight. Masked with the logo itself so the light
+     travels across the letters and the boar instead of across a rectangle.
+     Invisible unless the shimmer is the animation that got picked. */
+  #bugsheen {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 38%,
+      rgba(255,255,255,0.9) 50%,
+      transparent 62%
+    );
+    background-size: 300% 100%;
+    background-position: 130% 0;
+    -webkit-mask-image: url(cp-music-tv.png);
+    mask-image: url(cp-music-tv.png);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+
+  /* ---- The bug's entrance animations ------------------------------------
+     One is picked at random every time the bug comes up, never the same one
+     twice running. Adding another is two steps and nothing else: write the
+     keyframes, add a .fx- rule, then put its name in BUG_ANIMATIONS in the
+     script below. Every one of them must end on a clean, still, unmodified
+     logo, because the bug holds for BUG_SECONDS after the animation is over
+     and anything left mid-transform will just sit there looking broken. */
+
+  /* Light travels across the letterforms, once. */
+  @keyframes bugShimmer {
+    0%   { background-position: 130% 0; opacity: 0; }
+    12%  { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { background-position: -130% 0; opacity: 0; }
+  }
+  .fx-shimmer #bugsheen { animation: bugShimmer 1500ms ease-in-out 250ms; }
+
+  /* A loose connection. Fast jitter that settles. */
+  @keyframes bugBuzz {
+    0%, 100% { transform: translate(0, 0); }
+    10%  { transform: translate(-3px, 2px); }
+    20%  { transform: translate(3px, -2px); }
+    30%  { transform: translate(-2px, -2px); }
+    40%  { transform: translate(2px, 2px); }
+    52%  { transform: translate(-2px, 1px); }
+    64%  { transform: translate(1px, -1px); }
+    78%  { transform: translate(-1px, 0); }
+    90%  { transform: translate(1px, 0); }
+  }
+  .fx-buzz { animation: bugBuzz 850ms steps(1, end); }
+
+  /* Cutting in and out, like a switcher being ridden. */
+  @keyframes bugFlash {
+    0%, 18%, 36%   { opacity: 0; }
+    9%, 27%, 45%   { opacity: 1; }
+    55%  { opacity: 0.35; }
+    100% { opacity: 1; }
+  }
+  .fx-flash { animation: bugFlash 700ms steps(1, end); }
+
+  /* Torn horizontal slices sliding against each other. */
+  @keyframes bugGlitch {
+    0%   { clip-path: inset(0 0 62% 0); transform: translateX(-14px); }
+    12%  { clip-path: inset(48% 0 22% 0); transform: translateX(12px); }
+    24%  { clip-path: inset(18% 0 55% 0); transform: translateX(-9px); }
+    36%  { clip-path: inset(70% 0 4% 0);  transform: translateX(7px); }
+    48%  { clip-path: inset(30% 0 40% 0); transform: translateX(-5px); }
+    60%  { clip-path: inset(0 0 0 0);     transform: translateX(3px); }
+    72%  { clip-path: inset(40% 0 30% 0); transform: translateX(-2px); }
+    100% { clip-path: inset(0 0 0 0);     transform: translateX(0); }
+  }
+  .fx-glitch { animation: bugGlitch 620ms steps(1, end); }
+
+  /* A CRT being switched on: a line of light that opens out. */
+  @keyframes bugTvOn {
+    0%   { transform: scale(1.4, 0.005); filter: brightness(7); }
+    45%  { transform: scale(1.05, 0.02); filter: brightness(5); }
+    70%  { transform: scale(0.98, 1.08); filter: brightness(2.2); }
+    85%  { transform: scale(1.02, 0.97); filter: brightness(1.3); }
+    100% { transform: scale(1, 1);       filter: brightness(1); }
+  }
+  .fx-tvon { animation: bugTvOn 800ms ease-out; }
+
+  /* Vertical hold slipping, then catching. */
+  @keyframes bugRoll {
+    0%   { transform: translateY(115%); }
+    30%  { transform: translateY(-70%); }
+    55%  { transform: translateY(38%); }
+    75%  { transform: translateY(-16%); }
+    90%  { transform: translateY(6%); }
+    100% { transform: translateY(0); }
+  }
+  .fx-roll { animation: bugRoll 900ms cubic-bezier(0.3, 0.8, 0.35, 1); }
+
+  /* Slams in oversized and settles. */
+  @keyframes bugPunch {
+    0%   { transform: scale(1.9); filter: blur(7px); opacity: 0; }
+    45%  { transform: scale(0.92); filter: blur(0); opacity: 1; }
+    70%  { transform: scale(1.04); }
+    100% { transform: scale(1); }
+  }
+  .fx-punch { animation: bugPunch 620ms cubic-bezier(0.2, 1.1, 0.3, 1); }
+
+  /* Hangs itself on the corner and rocks to a stop. */
+  @keyframes bugWobble {
+    0%   { transform: rotate(-9deg) translateY(-14px); }
+    35%  { transform: rotate(5deg); }
+    55%  { transform: rotate(-3deg); }
+    72%  { transform: rotate(2deg); }
+    86%  { transform: rotate(-1deg); }
+    100% { transform: rotate(0); }
+  }
+  .fx-wobble { animation: bugWobble 1000ms ease-out; }
+
+  /* Wipes on from off the left edge. */
+  @keyframes bugSlide {
+    0%   { transform: translateX(-135%); }
+    72%  { transform: translateX(5%); }
+    100% { transform: translateX(0); }
+  }
+  .fx-slide { animation: bugSlide 700ms cubic-bezier(0.25, 1, 0.35, 1); }
+
+  /* An amber tube warming up and levelling off. */
+  @keyframes bugNeon {
+    0%   { filter: brightness(0.25) drop-shadow(0 0 0 rgba(255,166,43,0)); }
+    18%  { filter: brightness(1.9) drop-shadow(0 0 22px rgba(255,166,43,0.95)); }
+    30%  { filter: brightness(0.4) drop-shadow(0 0 3px rgba(255,166,43,0.3)); }
+    46%  { filter: brightness(1.7) drop-shadow(0 0 18px rgba(255,166,43,0.85)); }
+    62%  { filter: brightness(0.8) drop-shadow(0 0 8px rgba(255,166,43,0.5)); }
+    100% { filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+  }
+  .fx-neon { animation: bugNeon 1200ms ease-out; }
 
   #videobar {
     z-index: 8;
@@ -499,7 +644,12 @@
 <div id="videostage">
   <div id="screen"></div>
   <div id="ytframe"><div id="ytmount"></div></div>
-  <div id="bug"><img src="cp-music-tv.png" alt=""></div>
+  <div id="bug">
+    <div id="bugfx">
+      <img src="cp-music-tv.png" alt="">
+      <div id="bugsheen"></div>
+    </div>
+  </div>
   <div id="videobar">
     <div id="vcard">
       <div class="vartist" id="vartist"></div>
@@ -660,6 +810,15 @@ const BUG_EVERY_SECONDS = 75;
 // Nothing runs longer than this, so the schedule stops here rather than
 // leaving timers behind on a song that was skipped.
 const BUG_MAX_MINUTES = 12;
+
+// Every entrance the bug can make. One is picked at random each time it comes
+// up, never the same one twice running. Each name here must have a matching
+// .fx- rule in the stylesheet above. Deleting a name from this list is enough
+// to retire an animation, so trying one out is a one-line change.
+const BUG_ANIMATIONS = [
+  "shimmer", "buzz", "flash", "glitch", "tvon",
+  "roll", "punch", "wobble", "slide", "neon"
+];
 
 // How often to check the queue, in milliseconds.
 const POLL_MS = 4000;
@@ -1390,7 +1549,7 @@ function showVideoStage(on, title, artist, by, album, label) {
 
   clearTitleTimers();
   el("vcard").classList.remove("up");
-  el("bug").classList.remove("up");
+  hideBug();
 
   if (!on) return;
 
@@ -1425,14 +1584,45 @@ function scheduleBug() {
   const runFor = BUG_MAX_MINUTES * 60;
 
   for (let at = BUG_DELAY_SECONDS; at < runFor; at += BUG_EVERY_SECONDS) {
-    titleTimers.push(setTimeout(() => {
-      el("bug").classList.add("up");
-    }, at * 1000));
-
-    titleTimers.push(setTimeout(() => {
-      el("bug").classList.remove("up");
-    }, (at + BUG_SECONDS) * 1000));
+    titleTimers.push(setTimeout(showBug, at * 1000));
+    titleTimers.push(setTimeout(hideBug, (at + BUG_SECONDS) * 1000));
   }
+}
+
+
+// The animation used last time, so the next one is never the same. Held across
+// songs on purpose: two appearances in a row look identical to whoever is
+// watching whether or not a song changed in between.
+let lastBugAnimation = "";
+
+
+/**
+ * Brings the bug up with a randomly chosen entrance.
+ *
+ * The animation class goes on #bugfx and the visibility class on #bug, so an
+ * animation that plays with opacity cannot fight the fade. Forcing a reflow
+ * between removing and adding the class is what makes the same animation run
+ * again from the start rather than being ignored as an unchanged value.
+ */
+function showBug() {
+  const fx = el("bugfx");
+
+  BUG_ANIMATIONS.forEach(name => fx.classList.remove("fx-" + name));
+  void fx.offsetWidth;
+
+  const choices = BUG_ANIMATIONS.filter(name => name !== lastBugAnimation);
+  const picked = choices[Math.floor(Math.random() * choices.length)];
+
+  lastBugAnimation = picked;
+  fx.classList.add("fx-" + picked);
+  el("bug").classList.add("up");
+}
+
+
+/** Fades the bug out and takes the animation off with it. */
+function hideBug() {
+  el("bug").classList.remove("up");
+  BUG_ANIMATIONS.forEach(name => el("bugfx").classList.remove("fx-" + name));
 }
 
 
