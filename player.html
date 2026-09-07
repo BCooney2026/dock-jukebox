@@ -614,7 +614,10 @@
      out as the rest. Anything longer gets an ellipsis. */
   #vnext .row .rtext {
     min-width: 0;
-    max-width: 19ch;
+    /* shorten() in the script does the actual cutting, to an exact character
+       count. This is only a backstop for a string of very wide characters
+       that still overruns at that length. */
+    max-width: 13ch;
   }
   #vnext .row b {
     display: block;
@@ -1095,6 +1098,20 @@ const BUG_ANIMATIONS = [
 const BUG_IDLES = [
   "shimmer", "glow", "outline", "breathe", "sway", "float", "flicker"
 ];
+
+// The longest a title or a name may be on the up-next rail, counted in
+// characters including spaces and including the ellipsis that replaces what
+// was cut. Anything longer is shortened on a word boundary where one is close
+// enough, so "Dead Man's Party" becomes "Dead Man's" rather than "Dead Man's
+// P". Raise this number and the rail gets wider; lower it and titles stop
+// being recognisable.
+const QUEUE_TEXT_MAX = 12;
+
+// The most rows the rail will ever show, however much room there is. Without a
+// ceiling it fills whatever space the screen gives it, which on a big TV meant
+// nine or ten rows walling off the right third of the picture. Set it high,
+// say 99, to go back to filling the available space.
+const QUEUE_MAX_ROWS = 6;
 
 // How often to check the queue, in milliseconds.
 const POLL_MS = 4000;
@@ -2765,9 +2782,9 @@ function paintVideoNext(waiting) {
     const text = document.createElement("div");
     text.className = "rtext";
     const song = document.createElement("b");
-    song.textContent = item.Title;
+    song.textContent = shorten(item.Title);
     const who = document.createElement("span");
-    who.textContent = item.RequestedBy;
+    who.textContent = shorten(item.RequestedBy);
     text.append(song, who);
 
     row.append(text, art);
@@ -2775,6 +2792,31 @@ function paintVideoNext(waiting) {
   });
 
   trimToFit(box, waiting.length);
+}
+
+
+/**
+ * Cuts a title or a name down to QUEUE_TEXT_MAX characters.
+ *
+ * Counted the way a person would count them: every character including spaces,
+ * and the ellipsis counts as one of them, so nothing on the rail is ever wider
+ * than the number in that constant.
+ *
+ * It backs up to a word boundary when one is within a few characters of the
+ * cut, because a title that stops between words reads as a shorter title while
+ * one that stops mid-word reads as broken.
+ */
+function shorten(text) {
+  const full = String(text || "").trim();
+  if (full.length <= QUEUE_TEXT_MAX) return full;
+
+  const room = QUEUE_TEXT_MAX - 1;
+  const cut = full.slice(0, room);
+  const space = cut.lastIndexOf(" ");
+
+  const kept = (space >= room - 4 && space > 0) ? cut.slice(0, space) : cut;
+
+  return kept.replace(/[ ,.;:'-]+$/, "") + "\u2026";
 }
 
 
@@ -2788,6 +2830,12 @@ function paintVideoNext(waiting) {
  */
 function trimToFit(box, total) {
   const rows = () => box.querySelectorAll(".row");
+
+  // The ceiling first, then the measurement. Measurement alone would happily
+  // fill a large screen top to bottom.
+  while (rows().length > QUEUE_MAX_ROWS) {
+    box.removeChild(rows()[rows().length - 1]);
+  }
 
   while (box.scrollHeight > box.clientHeight && rows().length > 1) {
     box.removeChild(rows()[rows().length - 1]);
