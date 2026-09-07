@@ -564,6 +564,21 @@
     font-weight: 600;
     font-size: clamp(19px, 3.9vh, 47px);
   }
+  /* The dedication. Amber, italic, and pushed away from the metadata above it,
+     because it is the one line down here that a person wrote rather than a
+     record label. It has to read as a message, not as a fifth credit. */
+  .vdedication {
+    font-style: italic;
+    font-weight: 600;
+    font-size: clamp(17px, 3.2vh, 38px);
+    color: var(--amber);
+    margin-top: 1.1vh;
+    padding-left: 0.6vw;
+    border-left: 0.35vh solid var(--amber);
+    max-width: 46vw;
+  }
+  .vdedication:empty { display: none; }
+
   .valbum,
   .vlabel {
     font-weight: 400;
@@ -909,6 +924,7 @@
       <div class="vtitle" id="vtitle"></div>
       <div class="valbum" id="valbum"></div>
       <div class="vlabel" id="vlabel"></div>
+      <div class="vdedication" id="vdedication"></div>
     </div>
     <div class="vright">
       <div id="vnext"></div>
@@ -1879,7 +1895,7 @@ function clearTitleTimers() {
   titleTimers = [];
 }
 
-function showVideoStage(on, title, artist, by, album, label) {
+function showVideoStage(on, title, artist, by, album, label, dedication) {
   el("videostage").classList.toggle("on", on);
 
   clearTitleTimers();
@@ -1893,6 +1909,10 @@ function showVideoStage(on, title, artist, by, album, label) {
   el("valbum").textContent = album || "";
   el("vlabel").textContent = label || "";
   el("vcredit").textContent = by ? "Requested by " + by : "";
+
+  // Already cleaned and length-capped by the API. textContent rather than
+  // innerHTML so a message can never be markup.
+  el("vdedication").textContent = dedication || "";
 
   // In a few seconds after the video starts, hold, then out. Nothing takes its
   // place, so the picture is clean for the rest of the song.
@@ -2427,7 +2447,7 @@ async function tick() {
  * the video lookup and the explicit filter, and the two would drift apart
  * every time one of them was changed.
  */
-async function playSong(songId, title, artist, by) {
+async function playSong(songId, title, artist, by, dedication) {
   currentSongId = songId;
 
   const details = await songDetails(songId);
@@ -2448,13 +2468,13 @@ async function playSong(songId, title, artist, by) {
 
   if (video) {
     await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
-    showVideoStage(true, title, artist, by, details.album, details.label);
+    showVideoStage(true, title, artist, by, details.album, details.label, dedication);
     chaseVideoElement();
     setStatus("playing a video", true);
   } else if (backup) {
     hideVideoElement();
     playYouTube(backup);
-    showVideoStage(true, title, artist, by, details.album, details.label);
+    showVideoStage(true, title, artist, by, details.album, details.label, dedication);
     setStatus("playing a video from YouTube", true);
   } else {
     await music.setQueue({ song: songId, startPlaying: true });
@@ -2492,7 +2512,8 @@ async function playRequest(item) {
       String(item.SongID).trim(),
       item.Title,
       item.Artist,
-      item.RequestedBy
+      item.RequestedBy,
+      item.Dedication
     );
   } catch (error) {
     playbackError = error && error.message ? error.message : String(error);
@@ -2699,7 +2720,7 @@ async function playHouse() {
   trackFinished = false;
 
   try {
-    const how = await playSong(track.id, track.title, track.artist, "");
+    const how = await playSong(track.id, track.title, track.artist, "", "");
     setStatus(houseStationName + ", " + how, true);
   } catch (error) {
     // One bad track should not stall the rotation. Drop it and let the next
