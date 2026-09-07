@@ -126,11 +126,24 @@
     position: fixed;
     bottom: 4vh;
     left: 4vw;
+
+    /* Sized purely as a share of the screen, with no upper cap. There used to
+       be a 340px ceiling, which is invisible at 1920 wide and quietly halves
+       the logo on a display that reports more than about 2000 CSS pixels. A
+       bug should be the same fraction of the picture on every screen, which is
+       what vw already does. The floor is only for reading the debug strip on a
+       laptop, where 17vw would be too small to see. */
     width: 17vw;
-    max-width: 340px;
     min-width: 150px;
+
     opacity: 0;
     pointer-events: none;
+
+    /* One definition, referenced by the base style and by every animation that
+       has to restate the resting look. It was written out in seven places, and
+       seven copies of a value is six chances for the idle loop to end on a
+       slightly different shadow than it started on and visibly jump. */
+    --bug-shadow: drop-shadow(0 3px 11px rgba(0,0,0,0.9));
   }
 
   /* No transition, on purpose. The arrival animation starts at opacity 0 and
@@ -152,7 +165,7 @@
   #bugfx img {
     width: 100%;
     display: block;
-    filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85));
+    filter: var(--bug-shadow);
   }
 
   /* The shimmer's moving highlight. Masked with the logo itself so the light
@@ -427,13 +440,13 @@
     39%  { opacity: 0.2; filter: brightness(0.3); }
     60%  { opacity: 1; filter: brightness(2.4) drop-shadow(0 0 28px rgba(255,166,43,0.9)); }
     80%  { filter: brightness(1.3) drop-shadow(0 0 16px rgba(255,166,43,0.65)); }
-    100% { opacity: 1; filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+    100% { opacity: 1; filter: brightness(1) var(--bug-shadow); }
   }
   .fx-neon-in { animation: bugNeonIn 1800ms ease-out; }
 
   /* The tube dying: one last surge, then it gutters out. */
   @keyframes bugNeonOut {
-    0%   { opacity: 1; filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+    0%   { opacity: 1; filter: brightness(1) var(--bug-shadow); }
     25%  { opacity: 1; filter: brightness(3.2) drop-shadow(0 0 40px rgba(255,166,43,1)); }
     50%  { opacity: 0.15; filter: brightness(0.2); }
     75%  { opacity: 0.9; filter: brightness(1.6) drop-shadow(0 0 18px rgba(255,166,43,0.7)); }
@@ -466,18 +479,18 @@
 
   /* Warm amber halo, in and out. */
   @keyframes idleGlow {
-    0%, 100% { filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
-    50%      { filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85))
+    0%, 100% { filter: var(--bug-shadow); }
+    50%      { filter: var(--bug-shadow)
                        drop-shadow(0 0 13px rgba(255,166,43,0.75)); }
   }
   .idle-glow #bugfx img { animation: idleGlow 2600ms ease-in-out infinite; }
 
   /* A hard white edge that comes up and goes again. */
   @keyframes idleOutline {
-    0%, 100% { filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+    0%, 100% { filter: var(--bug-shadow); }
     50%      { filter: drop-shadow(0 0 1px rgba(255,255,255,0.95))
                        drop-shadow(0 0 2px rgba(255,255,255,0.8))
-                       drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+                       var(--bug-shadow); }
   }
   .idle-outline #bugfx img { animation: idleOutline 3000ms ease-in-out infinite; }
 
