@@ -123,10 +123,18 @@
     max-width: 340px;
     min-width: 150px;
     opacity: 0;
-    transition: opacity 700ms ease;
     pointer-events: none;
   }
-  #bug.up { opacity: 0.86; }
+
+  /* The transition is declared HERE rather than on #bug, and that is the whole
+     trick: adding the class brings a 700ms fade with it, so the bug eases in.
+     Removing the class takes the transition away at the same moment, so it
+     goes on the last frame of its exit animation with no fade at all. Move
+     this line up to #bug and it will start fading out again. */
+  #bug.up {
+    opacity: 0.86;
+    transition: opacity 700ms ease;
+  }
 
   #bugfx {
     position: relative;
@@ -911,14 +919,16 @@ const BUG_EVERY_SECONDS = 75;
 // lands and then holds perfectly still for eight seconds reads as two separate
 // events rather than one continuous presence.
 //
-// The gaps are measured from the start and the end of the appearance, so
-// changing BUG_SECONDS moves the exit along with it. BUG_HEADLINE_SECONDS is
-// how long to let the entrance finish before the loop takes over, and it needs
-// to be at least as long as the slowest headline animation in the stylesheet,
-// which is the shimmer at 1.9 seconds.
+// It does not fade out. The exit animation plays and the bug is gone on its
+// last frame, which is why the hide is driven by the animation actually
+// finishing rather than by a clock.
+//
+// BUG_HEADLINE_SECONDS is how long to let a headline run before the idle loop
+// takes over, and it doubles as the backstop for the exit. It has to be at
+// least as long as the slowest headline in the stylesheet, which is the
+// shimmer at 1.9 seconds.
 const BUG_ENTER_DELAY_SECONDS = 0.7;
 const BUG_HEADLINE_SECONDS = 2.0;
-const BUG_EXIT_LEAD_SECONDS = 1.8;
 
 // Nothing runs longer than this, so the schedule stops here rather than
 // leaving timers behind on a song that was skipped.
@@ -1705,13 +1715,18 @@ function scheduleBug() {
   for (let at = BUG_DELAY_SECONDS; at < runFor; at += BUG_EVERY_SECONDS) {
     const enter = at + BUG_ENTER_DELAY_SECONDS;
     const settle = enter + BUG_HEADLINE_SECONDS;
-    const exit = at + BUG_SECONDS - BUG_EXIT_LEAD_SECONDS;
+    const exit = at + BUG_SECONDS - BUG_HEADLINE_SECONDS;
 
     titleTimers.push(setTimeout(showBug, at * 1000));
     titleTimers.push(setTimeout(playHeadline, enter * 1000));
     titleTimers.push(setTimeout(startIdle, settle * 1000));
-    titleTimers.push(setTimeout(playHeadline, exit * 1000));
-    titleTimers.push(setTimeout(hideBug, (at + BUG_SECONDS) * 1000));
+    titleTimers.push(setTimeout(playExitHeadline, exit * 1000));
+
+    // A backstop, not the normal path. The exit animation finishing is what
+    // normally takes the bug off. If that event never arrives, because the
+    // animation was interrupted or the tab was in the background, this stops
+    // the logo sitting on screen for the rest of the song.
+    titleTimers.push(setTimeout(hideBug, (at + BUG_SECONDS + 0.5) * 1000));
   }
 }
 
@@ -1726,6 +1741,13 @@ let lastIdle = "";
 // exit deliberately replays the entrance rather than picking again.
 let thisHeadline = "";
 
+// True while the headline now running is the exit one, which is what tells the
+// animationend handler below that the bug should go when it finishes.
+let cutWhenHeadlineEnds = false;
+
+// The animationend handler is attached once, the first time the bug is used.
+let bugListening = false;
+
 
 /**
  * Fades the bug in and decides how this appearance will arrive and leave.
@@ -1735,6 +1757,7 @@ let thisHeadline = "";
  */
 function showBug() {
   clearBugAnimation();
+  cutWhenHeadlineEnds = false;
 
   thisHeadline = pickDifferent(BUG_ANIMATIONS, lastHeadline);
   lastHeadline = thisHeadline;
@@ -1759,6 +1782,40 @@ function playHeadline() {
   void fx.offsetWidth;
 
   fx.classList.add("fx-" + thisHeadline);
+}
+
+
+/**
+ * Plays the headline one last time and arranges for the bug to vanish on its
+ * final frame.
+ *
+ * Driven by the animation actually ending rather than by a timer, because the
+ * headlines are not all the same length: the glitch is 900ms and the shimmer
+ * is 1900ms. A fixed timer would leave the short ones sitting still for a
+ * second before disappearing, which is the flat pause all over again.
+ */
+function playExitHeadline() {
+  listenForBugAnimationEnd();
+  cutWhenHeadlineEnds = true;
+  playHeadline();
+}
+
+
+/**
+ * Attaches the one listener that takes the bug off screen.
+ *
+ * On #bug because the event has to be caught wherever it came from: most
+ * headlines animate #bugfx, but the shimmer animates #bugsheen. Both bubble
+ * up to here.
+ */
+function listenForBugAnimationEnd() {
+  if (bugListening) return;
+  bugListening = true;
+
+  el("bug").addEventListener("animationend", () => {
+    if (!cutWhenHeadlineEnds) return;
+    hideBug();
+  });
 }
 
 
@@ -1795,8 +1852,14 @@ function clearBugAnimation() {
 }
 
 
-/** Fades the bug out and takes the animations off with it. */
+/**
+ * Takes the bug off screen at once, with no fade, and clears the animations.
+ *
+ * The instant part is the stylesheet's doing: the opacity transition lives on
+ * #bug.up, so removing that class removes the transition in the same frame.
+ */
 function hideBug() {
+  cutWhenHeadlineEnds = false;
   el("bug").classList.remove("up");
   clearBugAnimation();
 }
