@@ -126,15 +126,12 @@
     pointer-events: none;
   }
 
-  /* The transition is declared HERE rather than on #bug, and that is the whole
-     trick: adding the class brings a 700ms fade with it, so the bug eases in.
-     Removing the class takes the transition away at the same moment, so it
-     goes on the last frame of its exit animation with no fade at all. Move
-     this line up to #bug and it will start fading out again. */
-  #bug.up {
-    opacity: 0.86;
-    transition: opacity 700ms ease;
-  }
+  /* No transition, on purpose. The arrival animation starts at opacity 0 and
+     brings the logo in, and the departure animation ends at opacity 0 and
+     takes it away. A fade here would run alongside them and turn one movement
+     into two overlapping ones, which is what made arriving and leaving feel
+     disconnected from the animation in between. */
+  #bug.up { opacity: 0.86; }
 
   #bugfx {
     position: relative;
@@ -170,145 +167,268 @@
     mask-repeat: no-repeat;
   }
 
-  /* ---- The bug's animations ---------------------------------------------
-     One plays a beat after the bug fades in, a different one plays again just
-     before it fades out. Never the same one twice running, across appearances
-     as well as within one.
+  /* ---- The bug's arrivals and departures --------------------------------
+     Every animation comes in a pair. The bug arrives with the -in and leaves
+     with the matching -out, so a punch in leaves by punching out and a slide
+     from the left leaves to the left. One pair is chosen per appearance and
+     the same pair is used at both ends.
 
-     These are deliberately big. A broadcast bug that moves politely reads as a
-     rendering fault rather than as a deliberate effect, especially across a
-     room on a TV. If any of them is too much on the real screen, turn down the
-     numbers in that one block: they are independent.
+     TWO RULES THAT KEEP THIS WORKING.
+     Every -in starts at opacity 0 and ends on a clean, still, unmodified logo.
+     The animation IS the entrance: there is no separate fade, which is what
+     used to make arriving feel like two unrelated events.
+     Every -out starts clean and ends at opacity 0, and carries
+     animation-fill-mode: forwards so it holds there. That is why the logo is
+     never seen to vanish: by the time anything removes it, it has already
+     animated itself away.
 
-     Adding another is three steps: write the keyframes, add a .fx- rule, put
-     the name in BUG_ANIMATIONS in the script below. Every one of them MUST end
-     on a clean, still, unmodified logo, because the bug holds after the
-     animation is over and anything left mid-transform will sit there looking
-     broken. */
+     Adding a pair is: two keyframes, two .fx- rules, one name in
+     BUG_ANIMATIONS. */
 
-  /* Light travels across the letterforms. Twice, the second faster. */
-  @keyframes bugShimmer {
+  /* Light sweeps across and leaves the logo behind it. */
+  @keyframes bugShimmerIn {
+    0%   { opacity: 0; }
+    30%  { opacity: 0.5; }
+    100% { opacity: 1; }
+  }
+  @keyframes bugShimmerSweep {
     0%   { background-position: 140% 0; opacity: 0; }
-    8%   { opacity: 1; }
-    42%  { background-position: -140% 0; opacity: 1; }
-    50%  { background-position: 140% 0; opacity: 0; }
-    58%  { opacity: 1; }
-    92%  { background-position: -140% 0; opacity: 1; }
-    100% { opacity: 0; }
+    10%  { opacity: 1; }
+    85%  { opacity: 1; }
+    100% { background-position: -140% 0; opacity: 0; }
   }
-  .fx-shimmer #bugsheen { animation: bugShimmer 1900ms ease-in-out; }
+  .fx-shimmer-in #bugfx { animation: bugShimmerIn 1100ms ease-out; }
+  .fx-shimmer-in #bugsheen { animation: bugShimmerSweep 1400ms ease-in-out; }
 
-  /* A loose connection being knocked. */
-  @keyframes bugBuzz {
-    0%, 100% { transform: translate(0, 0) rotate(0); }
-    8%   { transform: translate(-9px, 5px) rotate(-1.5deg); }
-    17%  { transform: translate(8px, -6px) rotate(1.5deg); }
-    26%  { transform: translate(-7px, -5px) rotate(-1deg); }
-    35%  { transform: translate(7px, 5px) rotate(1deg); }
-    45%  { transform: translate(-5px, 3px) rotate(-0.7deg); }
-    56%  { transform: translate(4px, -3px) rotate(0.7deg); }
-    67%  { transform: translate(-3px, 2px); }
-    78%  { transform: translate(2px, -1px); }
-    89%  { transform: translate(-1px, 0); }
+  /* The light comes back the other way and takes it with it. */
+  @keyframes bugShimmerOut {
+    0%   { opacity: 1; filter: brightness(1); }
+    45%  { opacity: 1; filter: brightness(2.4); }
+    100% { opacity: 0; filter: brightness(4); }
   }
-  .fx-buzz { animation: bugBuzz 1100ms steps(1, end); }
+  @keyframes bugShimmerSweepBack {
+    0%   { background-position: -140% 0; opacity: 0; }
+    12%  { opacity: 1; }
+    100% { background-position: 140% 0; opacity: 0; }
+  }
+  .fx-shimmer-out #bugfx {
+    animation: bugShimmerOut 1000ms ease-in forwards;
+  }
+  .fx-shimmer-out #bugsheen { animation: bugShimmerSweepBack 1000ms ease-in-out; }
 
-  /* Cutting in and out, like somebody riding a switcher. */
-  @keyframes bugFlash {
-    0%, 14%, 28%, 42%, 56% { opacity: 0; }
-    7%, 21%, 35%, 49%      { opacity: 1; filter: brightness(2.6); }
-    63%  { opacity: 1; filter: brightness(1); }
-    70%  { opacity: 0.2; }
+  /* Rattles into place. */
+  @keyframes bugBuzzIn {
+    0%   { opacity: 0; transform: translate(-16px, 10px); }
+    12%  { opacity: 1; transform: translate(12px, -8px) rotate(2deg); }
+    26%  { transform: translate(-10px, -7px) rotate(-1.6deg); }
+    40%  { transform: translate(8px, 6px) rotate(1.2deg); }
+    54%  { transform: translate(-6px, 4px) rotate(-0.8deg); }
+    68%  { transform: translate(4px, -3px); }
+    82%  { transform: translate(-2px, 1px); }
+    100% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  }
+  .fx-buzz-in { animation: bugBuzzIn 1000ms steps(1, end); }
+
+  /* Rattles itself apart. */
+  @keyframes bugBuzzOut {
+    0%   { opacity: 1; transform: translate(0, 0); }
+    16%  { transform: translate(5px, -4px) rotate(1deg); }
+    32%  { transform: translate(-8px, 6px) rotate(-1.6deg); }
+    50%  { opacity: 1; transform: translate(12px, -9px) rotate(2.4deg); }
+    68%  { opacity: 0.6; transform: translate(-17px, 12px) rotate(-3deg); }
+    84%  { opacity: 0.25; transform: translate(22px, -15px) rotate(4deg); }
+    100% { opacity: 0; transform: translate(-28px, 19px) rotate(-5deg); }
+  }
+  .fx-buzz-out { animation: bugBuzzOut 800ms steps(1, end) forwards; }
+
+  /* Cuts in. */
+  @keyframes bugFlashIn {
+    0%, 14%, 28%, 42% { opacity: 0; }
+    7%, 21%, 35%      { opacity: 1; filter: brightness(3); }
+    50%  { opacity: 1; filter: brightness(1.6); }
+    58%  { opacity: 0.15; }
     100% { opacity: 1; filter: brightness(1); }
   }
-  .fx-flash { animation: bugFlash 1000ms steps(1, end); }
+  .fx-flash-in { animation: bugFlashIn 900ms steps(1, end); }
 
-  /* Torn slices sliding hard against each other. */
-  @keyframes bugGlitch {
-    0%   { clip-path: inset(0 0 66% 0); transform: translateX(-42px) skewX(-9deg); }
-    10%  { clip-path: inset(52% 0 20% 0); transform: translateX(38px) skewX(7deg); }
-    20%  { clip-path: inset(14% 0 58% 0); transform: translateX(-30px) skewX(-5deg); }
-    30%  { clip-path: inset(74% 0 2% 0);  transform: translateX(26px); }
-    40%  { clip-path: inset(28% 0 44% 0); transform: translateX(-20px) skewX(6deg); }
-    50%  { clip-path: inset(0 0 0 0);     transform: translateX(16px); }
-    60%  { clip-path: inset(44% 0 28% 0); transform: translateX(-11px) skewX(-3deg); }
-    72%  { clip-path: inset(8% 0 70% 0);  transform: translateX(7px); }
-    84%  { clip-path: inset(0 0 0 0);     transform: translateX(-3px); }
-    100% { clip-path: inset(0 0 0 0);     transform: translateX(0) skewX(0); }
+  /* Cuts out, ending dark. */
+  @keyframes bugFlashOut {
+    0%   { opacity: 1; filter: brightness(1); }
+    16%  { opacity: 0; }
+    26%  { opacity: 1; filter: brightness(3.5); }
+    42%  { opacity: 0; }
+    54%  { opacity: 1; filter: brightness(2); }
+    68%  { opacity: 0; }
+    78%  { opacity: 0.7; }
+    100% { opacity: 0; }
   }
-  .fx-glitch { animation: bugGlitch 900ms steps(1, end); }
+  .fx-flash-out { animation: bugFlashOut 700ms steps(1, end) forwards; }
 
-  /* A CRT being switched on: a line of light that opens out. */
+  /* Tears into place. */
+  @keyframes bugGlitchIn {
+    0%   { opacity: 0; clip-path: inset(0 0 70% 0); transform: translateX(-46px) skewX(-10deg); }
+    10%  { opacity: 1; clip-path: inset(54% 0 18% 0); transform: translateX(40px) skewX(8deg); }
+    22%  { clip-path: inset(12% 0 60% 0); transform: translateX(-32px) skewX(-6deg); }
+    34%  { clip-path: inset(76% 0 2% 0);  transform: translateX(27px); }
+    46%  { clip-path: inset(26% 0 46% 0); transform: translateX(-19px) skewX(5deg); }
+    60%  { clip-path: inset(0 0 0 0);     transform: translateX(13px); }
+    74%  { clip-path: inset(46% 0 26% 0); transform: translateX(-7px) skewX(-3deg); }
+    88%  { clip-path: inset(0 0 0 0);     transform: translateX(3px); }
+    100% { opacity: 1; clip-path: inset(0 0 0 0); transform: translateX(0) skewX(0); }
+  }
+  .fx-glitch-in { animation: bugGlitchIn 900ms steps(1, end); }
+
+  /* Tears apart and is gone. */
+  @keyframes bugGlitchOut {
+    0%   { opacity: 1; clip-path: inset(0 0 0 0); transform: translateX(0); }
+    14%  { clip-path: inset(0 0 58% 0); transform: translateX(18px) skewX(6deg); }
+    28%  { clip-path: inset(62% 0 12% 0); transform: translateX(-26px) skewX(-8deg); }
+    44%  { opacity: 1; clip-path: inset(20% 0 52% 0); transform: translateX(36px) skewX(11deg); }
+    60%  { opacity: 0.7; clip-path: inset(70% 0 6% 0); transform: translateX(-48px) skewX(-14deg); }
+    78%  { opacity: 0.35; clip-path: inset(34% 0 40% 0); transform: translateX(62px) skewX(18deg); }
+    100% { opacity: 0; clip-path: inset(48% 0 48% 0); transform: translateX(-80px) skewX(-22deg); }
+  }
+  .fx-glitch-out { animation: bugGlitchOut 750ms steps(1, end) forwards; }
+
+  /* A CRT switching on: a line of light that opens out. */
   @keyframes bugTvOn {
-    0%   { transform: scale(1.7, 0.004); filter: brightness(9); }
-    35%  { transform: scale(1.5, 0.012); filter: brightness(8); }
-    58%  { transform: scale(0.86, 1.28); filter: brightness(3.4); }
-    73%  { transform: scale(1.12, 0.88); filter: brightness(1.9); }
-    86%  { transform: scale(0.96, 1.05); filter: brightness(1.2); }
-    100% { transform: scale(1, 1);       filter: brightness(1); }
+    0%   { opacity: 0; transform: scale(1.7, 0.004); filter: brightness(9); }
+    18%  { opacity: 1; transform: scale(1.6, 0.008); filter: brightness(9); }
+    40%  { transform: scale(1.5, 0.012); filter: brightness(8); }
+    62%  { transform: scale(0.86, 1.28); filter: brightness(3.4); }
+    78%  { transform: scale(1.12, 0.88); filter: brightness(1.9); }
+    90%  { transform: scale(0.96, 1.05); filter: brightness(1.2); }
+    100% { opacity: 1; transform: scale(1, 1); filter: brightness(1); }
   }
-  .fx-tvon { animation: bugTvOn 1000ms ease-out; }
+  .fx-tvon-in { animation: bugTvOn 950ms ease-out; }
 
-  /* Vertical hold slipping badly, then catching. */
-  @keyframes bugRoll {
-    0%   { transform: translateY(190%); }
-    22%  { transform: translateY(-150%); }
-    42%  { transform: translateY(105%); }
-    58%  { transform: translateY(-62%); }
-    72%  { transform: translateY(34%); }
-    84%  { transform: translateY(-16%); }
-    93%  { transform: translateY(6%); }
-    100% { transform: translateY(0); }
+  /* And switching off: collapses to a line, then a dot, then nothing. The one
+     everybody recognises, so it has to land exactly. */
+  @keyframes bugTvOff {
+    0%   { opacity: 1; transform: scale(1, 1); filter: brightness(1); }
+    30%  { opacity: 1; transform: scale(1.06, 0.72); filter: brightness(2.4); }
+    52%  { opacity: 1; transform: scale(1.5, 0.012); filter: brightness(9); }
+    72%  { opacity: 1; transform: scale(0.9, 0.008); filter: brightness(10); }
+    88%  { opacity: 1; transform: scale(0.08, 0.008); filter: brightness(12); }
+    100% { opacity: 0; transform: scale(0.01, 0.004); filter: brightness(14); }
   }
-  .fx-roll { animation: bugRoll 1200ms cubic-bezier(0.32, 0.75, 0.35, 1); }
+  .fx-tvoff-out { animation: bugTvOff 800ms cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+
+  /* Rolls up from below and catches. */
+  @keyframes bugRollIn {
+    0%   { opacity: 0; transform: translateY(190%); }
+    10%  { opacity: 1; }
+    26%  { transform: translateY(-150%); }
+    44%  { transform: translateY(105%); }
+    60%  { transform: translateY(-62%); }
+    74%  { transform: translateY(34%); }
+    86%  { transform: translateY(-16%); }
+    94%  { transform: translateY(6%); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  .fx-roll-in { animation: bugRollIn 1150ms cubic-bezier(0.32, 0.75, 0.35, 1); }
+
+  /* Loses hold and rolls away off the top. */
+  @keyframes bugRollOut {
+    0%   { opacity: 1; transform: translateY(0); }
+    18%  { transform: translateY(22%); }
+    36%  { transform: translateY(-48%); }
+    56%  { transform: translateY(70%); }
+    76%  { opacity: 1; transform: translateY(-130%); }
+    88%  { opacity: 0.5; transform: translateY(160%); }
+    100% { opacity: 0; transform: translateY(-240%); }
+  }
+  .fx-roll-out { animation: bugRollOut 850ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards; }
 
   /* Slams in oversized and settles. */
-  @keyframes bugPunch {
-    0%   { transform: scale(2.8); filter: blur(14px); opacity: 0; }
-    38%  { transform: scale(0.78); filter: blur(0); opacity: 1; }
+  @keyframes bugPunchIn {
+    0%   { opacity: 0; transform: scale(2.8); filter: blur(14px); }
+    38%  { opacity: 1; transform: scale(0.78); filter: blur(0); }
     58%  { transform: scale(1.16); }
     74%  { transform: scale(0.94); }
     88%  { transform: scale(1.04); }
-    100% { transform: scale(1); }
+    100% { opacity: 1; transform: scale(1); filter: blur(0); }
   }
-  .fx-punch { animation: bugPunch 850ms cubic-bezier(0.2, 1.1, 0.3, 1); }
+  .fx-punch-in { animation: bugPunchIn 800ms cubic-bezier(0.2, 1.1, 0.3, 1); }
 
-  /* Hangs itself on the corner and rocks to a stop. */
-  @keyframes bugWobble {
-    0%   { transform: rotate(-22deg) translateY(-38px); }
-    28%  { transform: rotate(14deg); }
-    45%  { transform: rotate(-9deg); }
-    60%  { transform: rotate(6deg); }
-    73%  { transform: rotate(-4deg); }
-    84%  { transform: rotate(2deg); }
-    93%  { transform: rotate(-1deg); }
-    100% { transform: rotate(0); }
+  /* Winds back, then fires straight through the screen. */
+  @keyframes bugPunchOut {
+    0%   { opacity: 1; transform: scale(1); filter: blur(0); }
+    30%  { opacity: 1; transform: scale(0.8); filter: blur(0); }
+    100% { opacity: 0; transform: scale(3.4); filter: blur(18px); }
   }
-  .fx-wobble { animation: bugWobble 1300ms ease-out; }
+  .fx-punch-out { animation: bugPunchOut 650ms cubic-bezier(0.5, 0, 0.9, 0.4) forwards; }
 
-  /* Thrown on from off the left edge, overshoots, comes back. */
-  @keyframes bugSlide {
-    0%   { transform: translateX(-180%) skewX(14deg); }
+  /* Drops in and rocks to a stop. */
+  @keyframes bugWobbleIn {
+    0%   { opacity: 0; transform: rotate(-24deg) translateY(-46px); }
+    14%  { opacity: 1; }
+    32%  { transform: rotate(14deg); }
+    48%  { transform: rotate(-9deg); }
+    62%  { transform: rotate(6deg); }
+    75%  { transform: rotate(-4deg); }
+    87%  { transform: rotate(2deg); }
+    100% { opacity: 1; transform: rotate(0); }
+  }
+  .fx-wobble-in { animation: bugWobbleIn 1200ms ease-out; }
+
+  /* Rocks loose and falls off the bottom. */
+  @keyframes bugWobbleOut {
+    0%   { opacity: 1; transform: rotate(0) translateY(0); }
+    18%  { transform: rotate(5deg); }
+    36%  { transform: rotate(-8deg); }
+    54%  { transform: rotate(13deg) translateY(6px); }
+    72%  { opacity: 1; transform: rotate(-19deg) translateY(30px); }
+    100% { opacity: 0; transform: rotate(34deg) translateY(150px); }
+  }
+  .fx-wobble-out { animation: bugWobbleOut 900ms cubic-bezier(0.5, 0, 0.9, 0.5) forwards; }
+
+  /* Thrown on from off the left edge. */
+  @keyframes bugSlideIn {
+    0%   { opacity: 0; transform: translateX(-180%) skewX(14deg); }
+    16%  { opacity: 1; }
     58%  { transform: translateX(16%) skewX(-6deg); }
     76%  { transform: translateX(-6%) skewX(2deg); }
     90%  { transform: translateX(2%); }
-    100% { transform: translateX(0) skewX(0); }
+    100% { opacity: 1; transform: translateX(0) skewX(0); }
   }
-  .fx-slide { animation: bugSlide 950ms cubic-bezier(0.25, 1, 0.35, 1); }
+  .fx-slide-in { animation: bugSlideIn 900ms cubic-bezier(0.25, 1, 0.35, 1); }
 
-  /* An amber tube striking, stuttering, and levelling off. */
-  @keyframes bugNeon {
-    0%   { filter: brightness(0.15) drop-shadow(0 0 0 rgba(255,166,43,0)); }
-    12%  { filter: brightness(2.8) drop-shadow(0 0 34px rgba(255,166,43,1)); }
-    22%  { filter: brightness(0.2) drop-shadow(0 0 2px rgba(255,166,43,0.2)); }
-    34%  { filter: brightness(2.5) drop-shadow(0 0 30px rgba(255,166,43,0.95)); }
-    44%  { filter: brightness(0.3) drop-shadow(0 0 4px rgba(255,166,43,0.3)); }
-    56%  { filter: brightness(2.2) drop-shadow(0 0 26px rgba(255,166,43,0.9)); }
-    70%  { filter: brightness(0.7) drop-shadow(0 0 12px rgba(255,166,43,0.6)); }
-    84%  { filter: brightness(1.5) drop-shadow(0 0 18px rgba(255,166,43,0.7)); }
-    100% { filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+  /* Winds back and leaves the same way it came. */
+  @keyframes bugSlideOut {
+    0%   { opacity: 1; transform: translateX(0) skewX(0); }
+    26%  { transform: translateX(9%) skewX(-4deg); }
+    100% { opacity: 0; transform: translateX(-190%) skewX(18deg); }
   }
-  .fx-neon { animation: bugNeon 1500ms ease-out; }
+  .fx-slide-out { animation: bugSlideOut 700ms cubic-bezier(0.5, 0, 0.8, 0.3) forwards; }
+
+  /* An amber tube striking and levelling off. */
+  @keyframes bugNeonIn {
+    0%   { opacity: 0; filter: brightness(0.15) drop-shadow(0 0 0 rgba(255,166,43,0)); }
+    10%  { opacity: 1; filter: brightness(2.8) drop-shadow(0 0 34px rgba(255,166,43,1)); }
+    20%  { opacity: 0.2; }
+    32%  { opacity: 1; filter: brightness(2.5) drop-shadow(0 0 30px rgba(255,166,43,0.95)); }
+    42%  { opacity: 0.3; }
+    56%  { opacity: 1; filter: brightness(2.2) drop-shadow(0 0 26px rgba(255,166,43,0.9)); }
+    72%  { filter: brightness(0.7) drop-shadow(0 0 12px rgba(255,166,43,0.6)); }
+    86%  { filter: brightness(1.5) drop-shadow(0 0 18px rgba(255,166,43,0.7)); }
+    100% { opacity: 1; filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+  }
+  .fx-neon-in { animation: bugNeonIn 1400ms ease-out; }
+
+  /* The tube dying: one last surge, then it gutters out. */
+  @keyframes bugNeonOut {
+    0%   { opacity: 1; filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+    18%  { opacity: 1; filter: brightness(3.2) drop-shadow(0 0 40px rgba(255,166,43,1)); }
+    30%  { opacity: 0.15; filter: brightness(0.2); }
+    42%  { opacity: 1; filter: brightness(2.4) drop-shadow(0 0 28px rgba(255,166,43,0.9)); }
+    54%  { opacity: 0.1; filter: brightness(0.15); }
+    66%  { opacity: 0.8; filter: brightness(1.4) drop-shadow(0 0 14px rgba(255,166,43,0.6)); }
+    80%  { opacity: 0.08; }
+    90%  { opacity: 0.4; filter: brightness(0.6); }
+    100% { opacity: 0; filter: brightness(0.1); }
+  }
+  .fx-neon-out { animation: bugNeonOut 1000ms ease-in forwards; }
 
   /* ---- The idle loop ----------------------------------------------------
      What the bug does between its entrance and its exit. Without this it
@@ -927,20 +1047,36 @@ const BUG_EVERY_SECONDS = 75;
 // takes over, and it doubles as the backstop for the exit. It has to be at
 // least as long as the slowest headline in the stylesheet, which is the
 // shimmer at 1.9 seconds.
-const BUG_ENTER_DELAY_SECONDS = 0.7;
-const BUG_HEADLINE_SECONDS = 2.0;
+// How long to let an arrival finish before the idle loop takes over, and how
+// long before the end to start the departure. It has to be at least as long as
+// the slowest animation in the stylesheet, which is the neon at 1.4 seconds.
+// There is no separate delay before the arrival any more: the animation is the
+// arrival, and it starts the instant the bug is put on screen.
+const BUG_HEADLINE_SECONDS = 1.6;
 
 // Nothing runs longer than this, so the schedule stops here rather than
 // leaving timers behind on a song that was skipped.
 const BUG_MAX_MINUTES = 12;
 
-// Every entrance the bug can make. One is picked at random each time it comes
-// up, never the same one twice running. Each name here must have a matching
-// .fx- rule in the stylesheet above. Deleting a name from this list is enough
-// to retire an animation, so trying one out is a one-line change.
+// Every way the bug can arrive and leave. One pair is picked at random each
+// appearance, never the same pair twice running, and both ends of that
+// appearance use it.
+//
+// Each entry names its two classes outright rather than having the code build
+// them from one word, because the television pair is honestly called tvon and
+// tvoff and forcing it to be "tvon" and "tvon-out" to suit the code would be
+// the code deciding what things are called. Deleting a line retires that pair.
 const BUG_ANIMATIONS = [
-  "shimmer", "buzz", "flash", "glitch", "tvon",
-  "roll", "punch", "wobble", "slide", "neon"
+  { in: "shimmer-in", out: "shimmer-out" },
+  { in: "buzz-in",    out: "buzz-out" },
+  { in: "flash-in",   out: "flash-out" },
+  { in: "glitch-in",  out: "glitch-out" },
+  { in: "tvon-in",    out: "tvoff-out" },
+  { in: "roll-in",    out: "roll-out" },
+  { in: "punch-in",   out: "punch-out" },
+  { in: "wobble-in",  out: "wobble-out" },
+  { in: "slide-in",   out: "slide-out" },
+  { in: "neon-in",    out: "neon-out" }
 ];
 
 // The quiet loops that run between the entrance and the exit. Picked the same
@@ -1742,12 +1878,10 @@ function scheduleBug() {
   const runFor = BUG_MAX_MINUTES * 60;
 
   for (let at = BUG_DELAY_SECONDS; at < runFor; at += BUG_EVERY_SECONDS) {
-    const enter = at + BUG_ENTER_DELAY_SECONDS;
-    const settle = enter + BUG_HEADLINE_SECONDS;
+    const settle = at + BUG_HEADLINE_SECONDS;
     const exit = at + BUG_SECONDS - BUG_HEADLINE_SECONDS;
 
     titleTimers.push(setTimeout(showBug, at * 1000));
-    titleTimers.push(setTimeout(playHeadline, enter * 1000));
     titleTimers.push(setTimeout(startIdle, settle * 1000));
     titleTimers.push(setTimeout(playExitHeadline, exit * 1000));
 
@@ -1763,12 +1897,12 @@ function scheduleBug() {
 // What ran last time, so the next appearance is never a repeat. Held across
 // songs on purpose: two appearances in a row look identical to whoever is
 // watching, whether or not a song changed in between.
-let lastHeadline = "";
+let lastPair = null;
 let lastIdle = "";
 
-// The headline chosen for the appearance currently on screen. Kept because the
-// exit deliberately replays the entrance rather than picking again.
-let thisHeadline = "";
+// The pair chosen for the appearance currently on screen. Kept because the
+// departure has to be the partner of the arrival, not a fresh pick.
+let thisPair = BUG_ANIMATIONS[0];
 
 // True while the headline now running is the exit one, which is what tells the
 // animationend handler below that the bug should go when it finishes.
@@ -1785,32 +1919,17 @@ let bugListening = false;
  * plays. That is what makes the exit match the entrance.
  */
 function showBug() {
-  clearBugAnimation();
-  cutWhenHeadlineEnds = false;
-
-  thisHeadline = pickDifferent(BUG_ANIMATIONS, lastHeadline);
-  lastHeadline = thisHeadline;
-
-  el("bug").classList.add("up");
-}
-
-
-/**
- * Runs this appearance's headline animation. Called twice, on the way in and
- * on the way out, with the same animation both times.
- *
- * The class goes on #bugfx while the visibility class stays on #bug, so an
- * animation that plays with opacity cannot fight the fade. Forcing a reflow
- * between removing and adding the class is what lets it run a second time at
- * all: without it the browser sees an unchanged class list and does nothing.
- */
-function playHeadline() {
   const fx = el("bugfx");
 
   clearBugAnimation();
-  void fx.offsetWidth;
+  cutWhenHeadlineEnds = false;
 
-  fx.classList.add("fx-" + thisHeadline);
+  thisPair = pickDifferent(BUG_ANIMATIONS, lastPair);
+  lastPair = thisPair;
+
+  void fx.offsetWidth;
+  el("bug").classList.add("up");
+  el("bug").classList.add("fx-" + thisPair.in);
 }
 
 
@@ -1824,9 +1943,14 @@ function playHeadline() {
  * second before disappearing, which is the flat pause all over again.
  */
 function playExitHeadline() {
+  const fx = el("bugfx");
+
   listenForBugAnimationEnd();
+  clearBugAnimation();
+  void fx.offsetWidth;
+
   cutWhenHeadlineEnds = true;
-  playHeadline();
+  el("bug").classList.add("fx-" + thisPair.out);
 }
 
 
@@ -1874,9 +1998,12 @@ function pickDifferent(list, avoid) {
 /** Takes every headline and idle animation back off. */
 function clearBugAnimation() {
   const bug = el("bug");
-  const fx = el("bugfx");
 
-  BUG_ANIMATIONS.forEach(name => fx.classList.remove("fx-" + name));
+  BUG_ANIMATIONS.forEach(pair => {
+    bug.classList.remove("fx-" + pair.in);
+    bug.classList.remove("fx-" + pair.out);
+  });
+
   BUG_IDLES.forEach(name => bug.classList.remove("idle-" + name));
 }
 
