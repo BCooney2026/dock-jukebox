@@ -2182,11 +2182,10 @@ let bugListening = false;
 const CELEBRATE_SECONDS = 13;
 const CELEBRATE_REFRESH_MS = 60 * 60 * 1000;
 
-// Today's people, and which of them has already been shown. Everyone gets one
-// card per song gap rather than all of them at once, so three birthdays on one
-// day is three moments across the morning instead of a wall of names.
+// Today's people. Nobody is "shown" in turn any more: a card only exists when
+// a request is addressed to one of them, so which person appears is decided by
+// whoever sent the song, not by a rotation.
 let celebrations = [];
-let celebrateNext = 0;
 let celebrateShownFor = "";
 
 
@@ -2474,10 +2473,7 @@ async function loadCelebrations() {
     const answer = await api("getCelebrations", {});
     if (!answer.ok) return;
 
-    if (answer.date !== celebrateShownFor) {
-      celebrateShownFor = answer.date;
-      celebrateNext = 0;
-    }
+    celebrateShownFor = answer.date;
 
     celebrations = answer.celebrations || [];
 
@@ -2505,10 +2501,32 @@ async function loadCelebrations() {
  * Returns 0 when there is nothing to show, which is most days.
  */
 function playCelebration(song) {
+  // NOTHING PLAYS UNLESS SOMEBODY SENT SOMETHING. This is the rule the first
+  // version got wrong and it is worth being blunt about, because the mistake
+  // looked reasonable in code and was awful on the wall.
+  //
+  // The card used to fire on anybody's birthday, in front of whatever song
+  // happened to be next. So a request one person sent to another was
+  // interrupted by a full-screen card celebrating a third person who had
+  // nothing to do with it. A birthday in a spreadsheet is not an occasion. A
+  // colleague going to the trouble of dedicating a song is.
+  //
+  // So: a celebration is the pairing of the two. Somebody has to be
+  // celebrating today AND a request has to be addressed to them. Miss either
+  // and this returns 0 and the song simply plays.
   if (!celebrations.length) return 0;
 
-  const who = celebrations[celebrateNext % celebrations.length];
-  celebrateNext++;
+  const by = song && song.by ? String(song.by).trim() : "";
+  const title = song && song.title ? String(song.title).trim() : "";
+  const to = song && song.dedicatedTo ? String(song.dedicatedTo).trim() : "";
+
+  if (!by || !title || !to) return 0;
+
+  const who = celebrations.filter(person =>
+    String(person.name).trim().toLowerCase() === to.toLowerCase()
+  )[0];
+
+  if (!who) return 0;
 
   const card = el("celebrate");
 
@@ -2525,48 +2543,21 @@ function playCelebration(song) {
                          : who.years + " YEARS WITH COONEY PROVISIONS")
       : "";
 
-  // The request that is about to play, but ONLY when it was actually sent to
-  // the person being celebrated.
-  //
-  // THIS CHECK IS THE WHOLE POINT AND IT WAS MISSING.
-  // The first version put whatever song came next onto the card. The card
-  // picks its name from the identity map and the song comes from the queue,
-  // and nothing connected the two: a birthday card for Carlos went out
-  // carrying a dedication written for somebody called Chrissy, in front of
-  // the whole company. Two true facts side by side reading as one false one.
-  //
-  // dedicatedTo comes from a picker rather than free text, so it can be
-  // compared. If it does not name the person on the card, the card celebrates
-  // them on its own and the song plays afterwards with its dedication in the
-  // lower third where it belongs.
-  const by = song && song.by ? String(song.by).trim() : "";
-  const title = song && song.title ? String(song.title).trim() : "";
-  const to = song && song.dedicatedTo ? String(song.dedicatedTo).trim() : "";
+  el("celebfrom").innerHTML = "THIS ONE IS FROM <b></b>";
+  el("celebfrom").querySelector("b").textContent = by.toUpperCase();
 
-  const forThisPerson =
-    to && to.toLowerCase() === String(who.name).trim().toLowerCase();
-
-  if (by && title && forThisPerson) {
-    el("celebfrom").innerHTML = "THIS ONE IS FROM <b></b>";
-    el("celebfrom").querySelector("b").textContent = by.toUpperCase();
-
-    el("celebsong").textContent = title;
-    if (song.artist) {
-      const artist = document.createElement("span");
-      // Escaped rather than typed, so the separator cannot come out as "Â·"
-      // if this file is ever saved or served as anything but UTF-8.
-      artist.textContent = "  \u00B7  " + song.artist;
-      el("celebsong").appendChild(artist);
-    }
-
-    // textContent, never innerHTML: the dedication is the one string here a
-    // person typed, and it is already cleaned by the API.
-    el("celebnote").textContent = song.dedication || "";
-  } else {
-    el("celebfrom").textContent = "";
-    el("celebsong").textContent = "";
-    el("celebnote").textContent = "";
+  el("celebsong").textContent = title;
+  if (song.artist) {
+    const artist = document.createElement("span");
+    // Escaped rather than typed, so the separator cannot come out as "Â·"
+    // if this file is ever saved or served as anything but UTF-8.
+    artist.textContent = "  \u00B7  " + song.artist;
+    el("celebsong").appendChild(artist);
   }
+
+  // textContent, never innerHTML: the dedication is the one string here a
+  // person typed, and it is already cleaned by the API.
+  el("celebnote").textContent = song.dedication || "";
 
   // Restart the animations. Same reflow trick as the bug: without it a second
   // card reuses the finished ones and appears with no entrance at all.
