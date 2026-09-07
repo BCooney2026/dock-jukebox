@@ -2501,44 +2501,42 @@ async function loadCelebrations() {
  * Returns 0 when there is nothing to show, which is most days.
  */
 function playCelebration(song) {
-  // NOTHING PLAYS UNLESS SOMEBODY SENT SOMETHING. This is the rule the first
-  // version got wrong and it is worth being blunt about, because the mistake
-  // looked reasonable in code and was awful on the wall.
+  // THE DEDICATION IS THE OCCASION. Somebody choosing a song for a colleague
+  // and writing them a line is the thing worth the whole screen. A birthday
+  // sitting in a spreadsheet is not.
   //
-  // The card used to fire on anybody's birthday, in front of whatever song
-  // happened to be next. So a request one person sent to another was
-  // interrupted by a full-screen card celebrating a third person who had
-  // nothing to do with it. A birthday in a spreadsheet is not an occasion. A
-  // colleague going to the trouble of dedicating a song is.
+  // The first version had this backwards: it fired on anybody's birthday, in
+  // front of whatever song happened to be next, so a request one person sent
+  // to another was interrupted by a card celebrating a third person who had
+  // nothing to do with it.
   //
-  // So: a celebration is the pairing of the two. Somebody has to be
-  // celebrating today AND a request has to be addressed to them. Miss either
-  // and this returns 0 and the song simply plays.
-  if (!celebrations.length) return 0;
-
+  // So the card requires a dedication addressed to a real person, and nothing
+  // else. If that person also happens to be celebrating today, the card says
+  // so. If not, it still plays: the gesture stands on its own.
   const by = song && song.by ? String(song.by).trim() : "";
   const title = song && song.title ? String(song.title).trim() : "";
   const to = song && song.dedicatedTo ? String(song.dedicatedTo).trim() : "";
 
   if (!by || !title || !to) return 0;
 
+  // Optional. Missing simply means it is not their day as well.
   const who = celebrations.filter(person =>
     String(person.name).trim().toLowerCase() === to.toLowerCase()
   )[0];
 
-  if (!who) return 0;
-
   const card = el("celebrate");
 
-  el("celebkicker").textContent = who.kind === "birthday"
-    ? "HAPPY BIRTHDAY"
-    : "CELEBRATING";
-  el("celebwho").textContent = who.name;
+  el("celebkicker").textContent = !who ? "THIS ONE IS FOR"
+    : (who.kind === "birthday" ? "HAPPY BIRTHDAY" : "CELEBRATING");
 
-  // Years only where the identity map actually had a start year, and never for
-  // a birthday. Nobody's age goes on a television.
+  // The identity map's spelling when we have it, otherwise what the API stored,
+  // which is itself taken from the map. Either way it is never free text.
+  el("celebwho").textContent = who ? who.name : to;
+
+  // Years only for a work anniversary, and only where the map had a start
+  // year. Nobody's age goes on a television.
   el("celebyears").textContent =
-    (who.kind === "anniversary" && who.years > 0)
+    (who && who.kind === "anniversary" && who.years > 0)
       ? (who.years === 1 ? "1 YEAR WITH COONEY PROVISIONS"
                          : who.years + " YEARS WITH COONEY PROVISIONS")
       : "";
