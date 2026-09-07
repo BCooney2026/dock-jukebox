@@ -161,7 +161,7 @@
   #celebrate .who {
     font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
     font-weight: 700;
-    font-size: clamp(60px, 20vh, 260px);
+    font-size: clamp(52px, 16vh, 210px);
     line-height: 0.95;
     color: #fff;
     text-transform: uppercase;
@@ -195,9 +195,9 @@
 
   #celebrate .from {
     font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: clamp(18px, 4.2vh, 52px);
+    font-size: clamp(15px, 3.2vh, 40px);
     letter-spacing: 0.2em;
-    color: rgba(255,255,255,0.72);
+    color: rgba(255,255,255,0.6);
   }
   #celebrate .from b {
     color: var(--amber);
@@ -207,7 +207,7 @@
   #celebrate .song {
     font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
     font-weight: 600;
-    font-size: clamp(20px, 4.6vh, 56px);
+    font-size: clamp(17px, 3.5vh, 42px);
     color: #fff;
     margin-top: 0.4vh;
     text-shadow: 2px 2px 0 rgba(0,0,0,0.85);
@@ -217,15 +217,32 @@
     color: rgba(255,255,255,0.75);
   }
 
+  /* The dedication, and it is the biggest thing on the card after the name.
+     Everything else here is bookkeeping: who, what track, from whom. This is
+     the only line somebody actually wrote, and it is the reason the card
+     exists. Sized to sit just under the name, and given its own entrance a
+     beat later so it lands as its own moment rather than arriving with the
+     credits. */
   #celebrate .note {
     font-style: italic;
-    font-weight: 600;
-    font-size: clamp(18px, 3.8vh, 46px);
+    font-weight: 700;
+    font-size: clamp(30px, 8.5vh, 104px);
+    line-height: 1.1;
     color: var(--amber);
-    margin-top: 1vh;
-    max-width: 70vw;
+    text-shadow: 0 0 4vh rgba(255,166,43,0.5), 3px 3px 0 rgba(0,0,0,0.85);
+    margin-top: 2vh;
+    max-width: 82vw;
+    opacity: 0;
+    animation: celebNote 750ms cubic-bezier(0.15, 1.35, 0.3, 1) 1900ms forwards;
   }
   #celebrate .note:empty { display: none; }
+
+  @keyframes celebNote {
+    0%   { opacity: 0; transform: scale(0.55) rotate(-3deg); filter: blur(10px); }
+    58%  { opacity: 1; transform: scale(1.07) rotate(1deg); filter: blur(0); }
+    80%  { transform: scale(0.98); }
+    100% { opacity: 1; transform: scale(1) rotate(0); }
+  }
 
   #celebrate .mark {
     position: relative;
@@ -2162,7 +2179,7 @@ let bugListening = false;
 // How long the card holds, and how often the list is refreshed. The refresh
 // exists so a player left running for weeks notices the date changing without
 // anybody reloading it.
-const CELEBRATE_SECONDS = 11;
+const CELEBRATE_SECONDS = 13;
 const CELEBRATE_REFRESH_MS = 60 * 60 * 1000;
 
 // Today's people, and which of them has already been shown. Everyone gets one
