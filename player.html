@@ -968,6 +968,15 @@ let playbackError = null;
 // isPlaying when they finish, so waiting for that alone stalls the queue.
 let trackFinished = false;
 
+// True once the jukebox is actually running, so the automatic path and the
+// button cannot both start it.
+let live = false;
+
+// The track played silently to find out whether this browser allows unattended
+// playback, and to open the gate on the one that does not. Any song works. It
+// is never heard: the volume is zero and it is stopped after half a second.
+const UNLOCK_SONG = "251002253";
+
 // The YouTube fallback player. Built once at page load, reused for every video.
 let ytPlayer = null;
 let ytApiReady = false;
@@ -1919,24 +1928,105 @@ document.addEventListener("musickitloaded", async () => {
     app: { name: "Cooney Provisions Video Jukebox", build: "1.0.0" }
   });
 
-  // The start button is never skipped, even when already signed in. Pressing it
-  // is what gives the browser permission to play audio later on a timer.
+  // Try to start on our own. On a browser that allows unattended playback this
+  // is the whole startup and nobody ever sees the button. On one that does not,
+  // it fails harmlessly and the button is still sitting there.
   setStatus("ready to start");
+  tryAutoStart();
 });
+
 
 el("startbtn").addEventListener("click", async () => {
   el("startbtn").disabled = true;
   el("startbtn").textContent = "Starting";
 
+  // authorize() opens a window, which only a real click is allowed to do. This
+  // is the one part of startup that can never happen automatically, and it is
+  // why a brand new browser always needs the button once.
   if (!music.isAuthorized) {
     await music.authorize();
   }
 
   await unlockAudio();
   await unlockYouTube();
+  goLive();
+});
+
+
+/**
+ * Starts the jukebox without anybody touching the screen, if the browser lets
+ * us. Returns quietly and leaves the Start screen up if it does not.
+ *
+ * WHY THIS IS A TRY RATHER THAN A SETTING.
+ * Whether audio may start on its own is the browser's decision and there is no
+ * way to ask it in advance. So we simply attempt it and watch: if a silent
+ * track really reaches the playing state, unattended playback is allowed here
+ * and the rest of startup can run. If it does not, the Start button is still
+ * on screen and works exactly as it always has.
+ *
+ * That is what makes this safe to run everywhere. Chrome launched in kiosk mode
+ * with --autoplay-policy=no-user-gesture-required starts on its own. iPadOS
+ * Safari refuses, every time, and shows the button. Neither needs a different
+ * build of this file and neither needs a flag set by hand.
+ */
+async function tryAutoStart() {
+  // Signing in cannot be automated: authorize() opens a window and browsers
+  // only allow that from a real click. Already signed in is the normal case,
+  // because the authorisation is remembered.
+  if (!music.isAuthorized) {
+    debugLine("autostart: not signed in yet, the button is needed once");
+    return;
+  }
+
+  const allowed = await audioWillStartOnItsOwn();
+
+  if (!allowed) {
+    debugLine("autostart: this browser wants a tap first");
+    return;
+  }
+
+  debugLine("autostart: unattended playback allowed, starting");
+  await unlockYouTube();
+  goLive();
+}
+
+
+/**
+ * Plays a track silently and reports whether it actually started.
+ *
+ * A refusal can arrive either as a thrown error or as a promise that resolves
+ * with nothing playing, depending on the browser, so the state is checked
+ * rather than trusted.
+ */
+async function audioWillStartOnItsOwn() {
+  try {
+    music.volume = 0;
+    await music.setQueue({ song: UNLOCK_SONG, startPlaying: true });
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const started = !!music.isPlaying;
+    music.stop();
+    return started;
+  } catch (error) {
+    debugLine("autostart refused: " + (error.message || error));
+    return false;
+  } finally {
+    music.volume = 1;
+  }
+}
+
+
+/**
+ * Clears the Start screen and runs the jukebox. Called from the button and
+ * from the automatic path, so both reach the same place by the same route.
+ */
+function goLive() {
+  if (live) return;
+  live = true;
+
   el("start").style.display = "none";
   begin();
-});
+}
 
 /**
  * Browsers refuse to start audio unless a person clicked something. Songs get
@@ -1946,7 +2036,7 @@ el("startbtn").addEventListener("click", async () => {
 async function unlockAudio() {
   try {
     music.volume = 0;
-    await music.setQueue({ song: "251002253", startPlaying: true });
+    await music.setQueue({ song: UNLOCK_SONG, startPlaying: true });
     await new Promise(resolve => setTimeout(resolve, 400));
     music.stop();
   } catch (error) {
