@@ -102,6 +102,101 @@
     border: 0;
   }
 
+  /* ---- Pop-up nuggets ----------------------------------------------------
+     The Pop-Up Video bubble, rebuilt rather than borrowed: a cream rounded
+     rectangle with a hard dark outline, black condensed text, and a tail
+     pointing back at whatever the fact is about.
+
+     Positioned by slot rather than at random. The slots deliberately avoid the
+     bottom left, where the network bug lives, and the right edge, where the
+     up-next rail lives. A bubble landing on either of those is the one thing
+     that would look like a bug rather than a feature. */
+  #nuggets {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .nugget {
+    position: absolute;
+    width: 26vw;
+    max-width: 480px;
+    min-width: 200px;
+    padding: 1.6vh 1.9vw;
+    box-sizing: border-box;
+
+    background: #f4efe2;
+    color: #14110d;
+    border: 0.35vh solid #14110d;
+    border-radius: 1.6vh;
+    box-shadow: 0 0.7vh 2.2vh rgba(0,0,0,0.55);
+
+    font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
+    font-size: clamp(14px, 2.1vh, 26px);
+    line-height: 1.28;
+    text-align: center;
+
+    opacity: 0;
+    transform: scale(0.2);
+    transform-origin: center bottom;
+  }
+
+  /* The tail. Two stacked triangles, the dark one a shade larger, which is how
+     you get an outlined tail without an SVG. */
+  .nugget::before,
+  .nugget::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    border-style: solid;
+    border-color: transparent;
+    border-bottom-width: 0;
+  }
+  .nugget::before {
+    bottom: -2.4vh;
+    margin-left: -1.5vh;
+    border-width: 2.4vh 1.5vh 0;
+    border-top-color: #14110d;
+  }
+  .nugget::after {
+    bottom: -1.7vh;
+    margin-left: -1vh;
+    border-width: 1.8vh 1vh 0;
+    border-top-color: #f4efe2;
+  }
+
+  /* Tail on top instead, for slots in the upper half. */
+  .nugget.below::before {
+    bottom: auto;
+    top: -2.4vh;
+    border-width: 0 1.5vh 2.4vh;
+    border-bottom-color: #14110d;
+    border-top-color: transparent;
+  }
+  .nugget.below::after {
+    bottom: auto;
+    top: -1.7vh;
+    border-width: 0 1vh 1.8vh;
+    border-bottom-color: #f4efe2;
+    border-top-color: transparent;
+  }
+
+  /* Pops on with an overshoot, holds, then goes without ceremony, which is how
+     the original behaved: the arrival was the event, not the departure. */
+  @keyframes nuggetIn {
+    0%   { opacity: 0; transform: scale(0.15); }
+    55%  { opacity: 1; transform: scale(1.12); }
+    75%  { transform: scale(0.96); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes nuggetOut {
+    0%   { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0.85); }
+  }
+  .nugget.on { animation: nuggetIn 380ms cubic-bezier(0.2, 1.3, 0.4, 1) forwards; }
+  .nugget.off { animation: nuggetOut 220ms ease-in forwards; }
+
   /* ---- The network bug --------------------------------------------------
      Bottom left, and it has to be. Broadcast convention would put a bug
      opposite the character generator, which would mean bottom right, and that
@@ -897,6 +992,7 @@
 <div id="videostage">
   <div id="screen"></div>
   <div id="ytframe"><div id="ytmount"></div></div>
+  <div id="nuggets"></div>
   <div id="bug">
     <div id="bugfx">
       <img src="cp-music-tv.png" alt="">
@@ -1104,6 +1200,53 @@ const BUG_ANIMATIONS = [
   { in: "wobble-in",  out: "wobble-out" },
   { in: "slide-in",   out: "slide-out" },
   { in: "neon-in",    out: "neon-out" }
+];
+
+// ---------------------------------------------------------------------------
+// Pop-up nuggets
+//
+// Timed to match the show: Pop-Up Video ran a bubble roughly every ten to
+// fifteen seconds, which on a three and a half minute song is about eighteen
+// of them. That is the number these settings aim at.
+//
+// Where the facts come from is the part that could not be matched. The show
+// assigned a staff writer to every video and double sourced everything, at
+// about thirty thousand dollars an episode. These are assembled from what the
+// jukebox already knows: Apple's own catalog data, which arrives in the same
+// request the lower third already makes, and the queue sheet, which is a
+// complete history of what this building has played and who played it.
+// ---------------------------------------------------------------------------
+
+// Set true to pop up on every song regardless of what was requested. For
+// trying the look out without deploying the request app. Leave it false in
+// normal use: pop-ups are something a person asks for, not the house style.
+const POPUP_ALWAYS = false;
+
+// Seconds between bubbles, how long each one holds, and how far into the song
+// the first one arrives.
+const NUGGET_EVERY_SECONDS = 12;
+const NUGGET_SECONDS = 6.5;
+const NUGGET_DELAY_SECONDS = 8;
+
+// The bloop. Two quick tones, the second higher, which is the shape of the
+// original. Generated rather than played from a file: no asset to host, no
+// vendor, and nothing borrowed.
+const NUGGET_BLOOP = true;
+
+// Where bubbles are allowed to land, as a percentage of the picture, with the
+// tail pointing down unless below is true. Deliberately nothing in the bottom
+// left, where the network bug lives, and nothing hard against the right edge,
+// where the up-next rail lives. Slots are used in a shuffled order so two in a
+// row never land in the same place.
+const NUGGET_SLOTS = [
+  { left: 18, top: 16, below: true },
+  { left: 52, top: 12, below: true },
+  { left: 30, top: 32, below: true },
+  { left: 60, top: 30, below: true },
+  { left: 14, top: 46, below: false },
+  { left: 44, top: 44, below: false },
+  { left: 24, top: 60, below: false },
+  { left: 55, top: 58, below: false }
 ];
 
 // The quiet loops that run between the entrance and the exit. Picked the same
@@ -1885,6 +2028,7 @@ function showVideoStage(on, title, artist, by, album, label) {
   clearTitleTimers();
   el("vcard").classList.remove("up");
   hideBug();
+  clearNuggets();
 
   if (!on) return;
 
@@ -1951,6 +2095,292 @@ let cutWhenHeadlineEnds = false;
 
 // The animationend handler is attached once, the first time the bug is used.
 let bugListening = false;
+
+
+// ---------------------------------------------------------------------------
+// Pop-up nuggets: writing them
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds every fact this song can honestly support.
+ *
+ * Only things that are actually true go in here. A pop-up that is wrong is
+ * worse than no pop-up: the room has no way to tell the difference and it is
+ * on a screen the whole company walks past. Nothing is invented and nothing is
+ * guessed. Every line is either Apple's own catalog data or something the
+ * queue sheet actually recorded.
+ */
+function writeNuggets(details, title, artist, by, history) {
+  const out = [];
+  const add = text => { if (text) out.push(text); };
+
+  const year = yearOf(details.released);
+  const albumYear = yearOf(details.albumReleased);
+  const thisYear = new Date().getFullYear();
+
+  // --- the record ---------------------------------------------------------
+  if (year) {
+    add(title + " came out in " + year + ".");
+    if (thisYear - year > 1) add("That was " + (thisYear - year) + " years ago.");
+  }
+
+  if (details.album && details.album !== title) {
+    add("From the album " + details.album
+      + (albumYear && albumYear !== year ? ", released " + albumYear : "") + ".");
+  }
+
+  if (details.trackNumber && details.albumTracks) {
+    add("Track " + details.trackNumber + " of " + details.albumTracks + ".");
+  }
+
+  if (details.label) add("Released on " + details.label + ".");
+
+  if (details.composer && !sameArtist(details.composer, artist)) {
+    add("Written by " + details.composer + ".");
+  }
+
+  if (details.genres && details.genres.length) {
+    add("Filed under " + details.genres.slice(0, 2).join(" and ") + ".");
+  }
+
+  const seconds = Math.round((details.durationMs || 0) / 1000);
+  if (seconds) {
+    add("Runs " + Math.floor(seconds / 60) + ":"
+      + String(seconds % 60).padStart(2, "0") + ".");
+  }
+
+  if (details.copyright) add(String(details.copyright).slice(0, 90));
+
+  // --- the room -----------------------------------------------------------
+  // The half the show could never have done, and the half that actually gets
+  // a reaction on a dock.
+  if (by) add(by + " put this one on.");
+
+  if (history && history.plays > 1) {
+    add("Played " + history.plays + " times on CP Music TV.");
+  } else if (history && history.plays === 1) {
+    add("First time this has ever played here.");
+  }
+
+  if (history && history.topRequester && history.topPlays > 1) {
+    add(history.topRequester + " has requested this "
+      + history.topPlays + " times.");
+  }
+
+  if (history && history.artistPlays > 1) {
+    add(artist + " has come up " + history.artistPlays + " times here.");
+  }
+
+  if (history && history.lastPlayedDays > 0) {
+    add("Last heard here " + history.lastPlayedDays + " days ago.");
+  }
+
+  return out;
+}
+
+
+/** The four digit year out of an Apple release date, or 0. */
+function yearOf(date) {
+  const match = String(date || "").match(/^(\d{4})/);
+  return match ? Number(match[1]) : 0;
+}
+
+
+/**
+ * What the queue sheet knows about this song and this artist.
+ *
+ * Read from getHistory, which the API already serves for the browse screen, so
+ * this adds no new endpoint. Failure is silent: fewer nuggets, never an error
+ * on the wall.
+ */
+async function nuggetHistory(songId, artist) {
+  try {
+    const answer = await api("getHistory", {});
+    if (!answer.ok || !answer.songs) return null;
+
+    const wanted = String(songId).trim();
+    const mine = answer.songs.filter(
+      song => String(song.songId).trim() === wanted
+    )[0];
+
+    const artistPlays = answer.songs
+      .filter(song => sameArtist(song.artist, artist))
+      .reduce((total, song) => total + (song.plays || 0), 0);
+
+    if (!mine) return { plays: 0, artistPlays: artistPlays };
+
+    let topRequester = "";
+    let topPlays = 0;
+    Object.keys(mine.by || {}).forEach(name => {
+      if (mine.by[name] > topPlays) {
+        topPlays = mine.by[name];
+        topRequester = name;
+      }
+    });
+
+    const last = new Date(mine.lastPlayed);
+    const days = isNaN(last.getTime())
+      ? 0
+      : Math.floor((Date.now() - last.getTime()) / 86400000);
+
+    return {
+      plays: mine.plays || 0,
+      artistPlays: artistPlays,
+      topRequester: topRequester,
+      topPlays: topPlays,
+      lastPlayedDays: days
+    };
+  } catch (error) {
+    debugLine("nuggets: no history, catalog facts only");
+    return null;
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Pop-up nuggets: popping them
+// ---------------------------------------------------------------------------
+
+// Timers for the song currently playing, cleared whenever the song changes so
+// a finished song cannot pop a fact over the next one.
+let nuggetTimers = [];
+
+function clearNuggets() {
+  nuggetTimers.forEach(clearTimeout);
+  nuggetTimers = [];
+  el("nuggets").innerHTML = "";
+}
+
+
+/**
+ * Schedules every bubble for one song, at the show's cadence.
+ *
+ * The facts simply run out when the song is longer than the list. Repeating
+ * them to fill the time would be worse than a quiet second half.
+ */
+function scheduleNuggets(facts, songSeconds) {
+  clearNuggets();
+  if (!facts.length) return;
+
+  const slots = shuffled(NUGGET_SLOTS);
+  const runFor = songSeconds || 240;
+
+  let index = 0;
+  for (let at = NUGGET_DELAY_SECONDS;
+       at < runFor - NUGGET_SECONDS;
+       at += NUGGET_EVERY_SECONDS) {
+    if (index >= facts.length) break;
+
+    const fact = facts[index];
+    const slot = slots[index % slots.length];
+    index++;
+
+    nuggetTimers.push(setTimeout(() => popNugget(fact, slot), at * 1000));
+  }
+
+  debugLine("nuggets: " + index + " of " + facts.length
+    + " scheduled over " + Math.round(runFor) + "s");
+}
+
+
+/** Puts one bubble on screen, holds it, and takes it off. */
+function popNugget(text, slot) {
+  const bubble = document.createElement("div");
+  bubble.className = "nugget" + (slot.below ? " below" : "");
+  bubble.style.left = slot.left + "%";
+  bubble.style.top = slot.top + "%";
+  bubble.textContent = text;
+
+  el("nuggets").appendChild(bubble);
+  void bubble.offsetWidth;
+  bubble.classList.add("on");
+  bloop();
+
+  nuggetTimers.push(setTimeout(() => {
+    bubble.classList.remove("on");
+    bubble.classList.add("off");
+    nuggetTimers.push(setTimeout(() => bubble.remove(), 260));
+  }, NUGGET_SECONDS * 1000));
+}
+
+
+/**
+ * The bloop, built rather than sampled.
+ *
+ * Two short sine tones a fifth apart with a fast decay, which is the shape of
+ * the sound the show used. Generated in the browser, so there is no audio file
+ * to host and nothing of anybody else's in the repository.
+ *
+ * Its own audio context, deliberately separate from MusicKit, so it can never
+ * interfere with the song.
+ */
+function bloop() {
+  if (!NUGGET_BLOOP) return;
+
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+
+    if (!bloop.ctx) bloop.ctx = new Ctx();
+    const ctx = bloop.ctx;
+    const now = ctx.currentTime;
+
+    [[520, 0], [780, 0.07]].forEach(pair => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const hz = pair[0];
+      const delay = pair[1];
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(hz, now + delay);
+
+      gain.gain.setValueAtTime(0.0001, now + delay);
+      gain.gain.linearRampToValueAtTime(0.18, now + delay + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.16);
+
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.18);
+    });
+  } catch (error) {
+    // No sound is not worth interrupting a song over.
+  }
+}
+
+
+/** A copy of a list in random order. */
+function shuffled(list) {
+  const copy = list.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const swap = copy[i];
+    copy[i] = copy[j];
+    copy[j] = swap;
+  }
+  return copy;
+}
+
+
+/**
+ * Gathers the facts for one song and lays the bubbles out.
+ *
+ * Separate from the playback path and never awaited by it, so a slow history
+ * read delays the pop-ups rather than the music.
+ */
+async function startNuggets(songId, title, artist, by, details) {
+  const history = await nuggetHistory(songId, artist);
+  const facts = writeNuggets(details, title, artist, by, history);
+  const seconds = Math.round((details.durationMs || 0) / 1000);
+
+  scheduleNuggets(facts, seconds);
+}
+
+
+/** Whether a value from the queue sheet or a query string means yes. */
+function isYes(value) {
+  if (value === true) return true;
+  return String(value || "").trim().toUpperCase() === "TRUE";
+}
 
 
 /**
@@ -2088,14 +2518,42 @@ async function songDetails(songId) {
       // Some tracks have no album relationship. The line is simply left off.
     }
 
+    let albumTracks = 0;
+    let albumReleased = "";
+    let copyright = "";
+    try {
+      const album = song.relationships.albums.data[0].attributes;
+      albumTracks = album.trackCount || 0;
+      albumReleased = album.releaseDate || "";
+      copyright = album.copyright || "";
+    } catch (error) {
+      // Same as the label above: no album relationship, so these are skipped.
+    }
+
     return {
       artwork: attributes.artwork.url,
       durationMs: attributes.durationInMillis || 0,
       album: attributes.albumName || "",
-      label: label
+      label: label,
+
+      // Everything below is only used to write pop-up nuggets. It costs
+      // nothing extra: it all arrives in the same response the lower third
+      // already asks for.
+      released: attributes.releaseDate || "",
+      genres: attributes.genreNames || [],
+      composer: attributes.composerName || "",
+      trackNumber: attributes.trackNumber || 0,
+      discNumber: attributes.discNumber || 0,
+      albumTracks: albumTracks,
+      albumReleased: albumReleased,
+      copyright: copyright
     };
   } catch (error) {
-    return { artwork: null, durationMs: 0, album: "", label: "" };
+    return {
+      artwork: null, durationMs: 0, album: "", label: "",
+      released: "", genres: [], composer: "", trackNumber: 0,
+      discNumber: 0, albumTracks: 0, albumReleased: "", copyright: ""
+    };
   }
 }
 
@@ -2399,7 +2857,7 @@ async function tick() {
  * the video lookup and the explicit filter, and the two would drift apart
  * every time one of them was changed.
  */
-async function playSong(songId, title, artist, by) {
+async function playSong(songId, title, artist, by, popUpWanted) {
   currentSongId = songId;
 
   const details = await songDetails(songId);
@@ -2438,6 +2896,13 @@ async function playSong(songId, title, artist, by) {
   paintNowPlaying(title, artist, by);
   paintArtwork(sized(details.artwork, 900));
 
+  // Pop-up nuggets, if this request asked for them. Kicked off without being
+  // waited on: it makes one history call, and the song must not sit silent
+  // while that returns.
+  if (POPUP_ALWAYS || isYes(popUpWanted)) {
+    startNuggets(songId, title, artist, by, details);
+  }
+
   // Reported back so the house rotation can name the station without erasing
   // which of the three paths actually ran. That status line is the fastest way
   // to tell a video failure from a station failure.
@@ -2464,7 +2929,8 @@ async function playRequest(item) {
       String(item.SongID).trim(),
       item.Title,
       item.Artist,
-      item.RequestedBy
+      item.RequestedBy,
+      item.PopUp
     );
   } catch (error) {
     playbackError = error && error.message ? error.message : String(error);
@@ -2671,7 +3137,7 @@ async function playHouse() {
   trackFinished = false;
 
   try {
-    const how = await playSong(track.id, track.title, track.artist, "");
+    const how = await playSong(track.id, track.title, track.artist, "", false);
     setStatus(houseStationName + ", " + how, true);
   } catch (error) {
     // One bad track should not stall the rotation. Drop it and let the next
