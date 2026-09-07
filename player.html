@@ -103,14 +103,18 @@
   }
 
   /* ---- Pop-up nuggets ----------------------------------------------------
-     The Pop-Up Video bubble, rebuilt rather than borrowed: a cream rounded
-     rectangle with a hard dark outline, black condensed text, and a tail
-     pointing back at whatever the fact is about.
+     Rebuilt from reference rather than from memory. The parts that make one of
+     these read correctly, in order of how much they matter:
 
-     Positioned by slot rather than at random. The slots deliberately avoid the
-     bottom left, where the network bug lives, and the right edge, where the
-     up-next rail lives. A bubble landing on either of those is the one thing
-     that would look like a bug rather than a feature. */
+       1. The badge. A scalloped disc on the left with a pictogram in it,
+          hanging off the bubble's edge. Without it this is just a speech
+          balloon and reads as nothing in particular.
+       2. Black bold text, left aligned, in a rounded face. Not centred.
+       3. A white body with a hard dark outline, not cream.
+       4. A small arrow off the badge, pointing back at what the fact is about.
+
+     The pictograms are drawn here rather than lifted, and the badge colours
+     rotate through a set of our own. No VH1 mark appears anywhere. */
   #nuggets {
     position: fixed;
     inset: 0;
@@ -120,82 +124,76 @@
 
   .nugget {
     position: absolute;
-    width: 26vw;
-    max-width: 480px;
-    min-width: 200px;
-    padding: 1.6vh 1.9vw;
-    box-sizing: border-box;
-
-    background: #f4efe2;
-    color: #14110d;
-    border: 0.35vh solid #14110d;
-    border-radius: 1.6vh;
-    box-shadow: 0 0.7vh 2.2vh rgba(0,0,0,0.55);
-
-    font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
-    font-size: clamp(14px, 2.1vh, 26px);
-    line-height: 1.28;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    /* Narrow on purpose. The reference bubbles wrap to two or three lines,
+       which is what gives them their chunky shape. A wide one turns into a
+       single line of text in a bar and stops reading as a bubble at all. */
+    width: 23vw;
+    max-width: 430px;
+    min-width: 210px;
 
     opacity: 0;
     transform: scale(0.2);
-    transform-origin: center bottom;
+    transform-origin: left center;
   }
 
-  /* The tail. Two stacked triangles, the dark one a shade larger, which is how
-     you get an outlined tail without an SVG. */
-  .nugget::before,
-  .nugget::after {
-    content: "";
+  .nugget .body {
+    flex: 1;
+    margin-left: 5.6vh;
+    padding: 1.7vh 1.5vw 1.7vh 6.2vh;
+    box-sizing: border-box;
+
+    /* Light grey and slightly translucent, not white. On the show the video
+       reads faintly through the bubble, which is what stops it looking like a
+       graphic pasted on afterwards. Thin outline and a small radius: a heavy
+       border and round corners is the board game's later styling, not the
+       show's. */
+    background: rgba(226,226,222,0.93);
+    color: #000;
+    border: 0.2vh solid #101010;
+    border-radius: 0.6vh;
+    box-shadow: 0 0.5vh 1.5vh rgba(0,0,0,0.45);
+
+    /* A straight bold grotesque. The rounded face was my mistake: that is the
+       trivia game box, and the show used a plain bold sans. */
+    font-family: 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(13px, 2vh, 25px);
+    line-height: 1.2;
+    text-align: left;
+  }
+
+  /* The badge hangs off the left edge and overlaps the body, which is what
+     stops the two reading as separate objects. */
+  /* Dropped below centre on purpose: on the show the disc hangs past the
+     bottom edge of the bubble rather than sitting level with it. */
+  .nugget .badge {
     position: absolute;
-    left: 50%;
-    border-style: solid;
-    border-color: transparent;
-    border-bottom-width: 0;
+    left: 0;
+    top: 50%;
+    transform: translateY(-32%);
+    width: 11.4vh;
+    height: 11.4vh;
+    flex-shrink: 0;
+    z-index: 2;
   }
-  .nugget::before {
-    bottom: -2.4vh;
-    margin-left: -1.5vh;
-    border-width: 2.4vh 1.5vh 0;
-    border-top-color: #14110d;
-  }
-  .nugget::after {
-    bottom: -1.7vh;
-    margin-left: -1vh;
-    border-width: 1.8vh 1vh 0;
-    border-top-color: #f4efe2;
-  }
+  .nugget .badge svg { width: 100%; height: 100%; display: block; }
 
-  /* Tail on top instead, for slots in the upper half. */
-  .nugget.below::before {
-    bottom: auto;
-    top: -2.4vh;
-    border-width: 0 1.5vh 2.4vh;
-    border-bottom-color: #14110d;
-    border-top-color: transparent;
-  }
-  .nugget.below::after {
-    bottom: auto;
-    top: -1.7vh;
-    border-width: 0 1vh 1.8vh;
-    border-bottom-color: #f4efe2;
-    border-top-color: transparent;
-  }
-
-  /* Pops on with an overshoot, holds, then goes without ceremony, which is how
-     the original behaved: the arrival was the event, not the departure. */
+  /* Pops on with an overshoot, holds, then goes without ceremony. The arrival
+     was the event on the original, not the departure. */
   @keyframes nuggetIn {
-    0%   { opacity: 0; transform: scale(0.15); }
-    55%  { opacity: 1; transform: scale(1.12); }
-    75%  { transform: scale(0.96); }
-    100% { opacity: 1; transform: scale(1); }
+    0%   { opacity: 0; transform: scale(0.15) rotate(-6deg); }
+    55%  { opacity: 1; transform: scale(1.1) rotate(1deg); }
+    75%  { transform: scale(0.97); }
+    100% { opacity: 1; transform: scale(1) rotate(0); }
   }
   @keyframes nuggetOut {
     0%   { opacity: 1; transform: scale(1); }
-    100% { opacity: 0; transform: scale(0.85); }
+    100% { opacity: 0; transform: scale(0.86); }
   }
-  .nugget.on { animation: nuggetIn 380ms cubic-bezier(0.2, 1.3, 0.4, 1) forwards; }
-  .nugget.off { animation: nuggetOut 220ms ease-in forwards; }
+  .nugget.on { animation: nuggetIn 360ms cubic-bezier(0.2, 1.35, 0.4, 1) forwards; }
+  .nugget.off { animation: nuggetOut 200ms ease-in forwards; }
 
   /* ---- The network bug --------------------------------------------------
      Bottom left, and it has to be. Broadcast convention would put a bug
@@ -1220,7 +1218,7 @@ const BUG_ANIMATIONS = [
 // Set true to pop up on every song regardless of what was requested. For
 // trying the look out without deploying the request app. Leave it false in
 // normal use: pop-ups are something a person asks for, not the house style.
-const POPUP_ALWAYS = false;
+const POPUP_ALWAYS = true;
 
 // Seconds between bubbles, how long each one holds, and how far into the song
 // the first one arrives.
@@ -1239,14 +1237,14 @@ const NUGGET_BLOOP = true;
 // where the up-next rail lives. Slots are used in a shuffled order so two in a
 // row never land in the same place.
 const NUGGET_SLOTS = [
-  { left: 18, top: 16, below: true },
-  { left: 52, top: 12, below: true },
-  { left: 30, top: 32, below: true },
-  { left: 60, top: 30, below: true },
-  { left: 14, top: 46, below: false },
-  { left: 44, top: 44, below: false },
-  { left: 24, top: 60, below: false },
-  { left: 55, top: 58, below: false }
+  { left: 10, top: 18 },
+  { left: 34, top: 12 },
+  { left: 16, top: 34 },
+  { left: 40, top: 30 },
+  { left: 8,  top: 50 },
+  { left: 36, top: 47 },
+  { left: 20, top: 63 },
+  { left: 44, top: 60 }
 ];
 
 // The quiet loops that run between the entrance and the exit. Picked the same
@@ -2112,7 +2110,7 @@ let bugListening = false;
  */
 function writeNuggets(details, title, artist, by, history) {
   const out = [];
-  const add = text => { if (text) out.push(text); };
+  const add = (icon, text) => { if (text) out.push({ icon: icon, text: text }); };
 
   const year = yearOf(details.released);
   const albumYear = yearOf(details.albumReleased);
@@ -2120,59 +2118,59 @@ function writeNuggets(details, title, artist, by, history) {
 
   // --- the record ---------------------------------------------------------
   if (year) {
-    add(title + " came out in " + year + ".");
-    if (thisYear - year > 1) add("That was " + (thisYear - year) + " years ago.");
+    add("calendar", title + " came out in " + year + ".");
+    if (thisYear - year > 1) add("clock", "That was " + (thisYear - year) + " years ago.");
   }
 
   if (details.album && details.album !== title) {
-    add("From the album " + details.album
+    add("disc", "From the album " + details.album
       + (albumYear && albumYear !== year ? ", released " + albumYear : "") + ".");
   }
 
   if (details.trackNumber && details.albumTracks) {
-    add("Track " + details.trackNumber + " of " + details.albumTracks + ".");
+    add("list", "Track " + details.trackNumber + " of " + details.albumTracks + ".");
   }
 
-  if (details.label) add("Released on " + details.label + ".");
+  if (details.label) add("tag", "Released on " + details.label + ".");
 
   if (details.composer && !sameArtist(details.composer, artist)) {
-    add("Written by " + details.composer + ".");
+    add("pen", "Written by " + details.composer + ".");
   }
 
   if (details.genres && details.genres.length) {
-    add("Filed under " + details.genres.slice(0, 2).join(" and ") + ".");
+    add("note", "Filed under " + details.genres.slice(0, 2).join(" and ") + ".");
   }
 
   const seconds = Math.round((details.durationMs || 0) / 1000);
   if (seconds) {
-    add("Runs " + Math.floor(seconds / 60) + ":"
+    add("clock", "Runs " + Math.floor(seconds / 60) + ":"
       + String(seconds % 60).padStart(2, "0") + ".");
   }
 
-  if (details.copyright) add(String(details.copyright).slice(0, 90));
+  if (details.copyright) add("legal", String(details.copyright).slice(0, 90));
 
   // --- the room -----------------------------------------------------------
   // The half the show could never have done, and the half that actually gets
   // a reaction on a dock.
-  if (by) add(by + " put this one on.");
+  if (by) add("person", by + " put this one on.");
 
   if (history && history.plays > 1) {
-    add("Played " + history.plays + " times on CP Music TV.");
+    add("chart", "Played " + history.plays + " times on CP Music TV.");
   } else if (history && history.plays === 1) {
-    add("First time this has ever played here.");
+    add("star", "First time this has ever played here.");
   }
 
   if (history && history.topRequester && history.topPlays > 1) {
-    add(history.topRequester + " has requested this "
+    add("person", history.topRequester + " has requested this "
       + history.topPlays + " times.");
   }
 
   if (history && history.artistPlays > 1) {
-    add(artist + " has come up " + history.artistPlays + " times here.");
+    add("chart", artist + " has come up " + history.artistPlays + " times here.");
   }
 
   if (history && history.lastPlayedDays > 0) {
-    add("Last heard here " + history.lastPlayedDays + " days ago.");
+    add("clock", "Last heard here " + history.lastPlayedDays + " days ago.");
   }
 
   return out;
@@ -2283,15 +2281,93 @@ function scheduleNuggets(facts, songSeconds) {
 }
 
 
+// The badge colours, rotated through so consecutive bubbles never match.
+const NUGGET_COLOURS = ["#ff3d8b", "#2ec5c1", "#ffc21f", "#a45cff", "#ff7a29"];
+
+// The pictograms, drawn as paths on a 100 by 100 box. Each nugget picks one by
+// name in writeNuggets, so a fact about a release date gets a calendar and a
+// fact about a person gets a person. Adding one is a path here and a name
+// there, and nothing else.
+const NUGGET_GLYPHS = {
+  calendar: { fill: "#ffffff", d: "M26 32h48v42H26z M26 44h48 M38 24v14 M62 24v14" },
+  clock:    { fill: "#ffffff", d: "M50 22a28 28 0 1 0 0.1 0z M50 32v20l14 9" },
+  disc:     { fill: "#3a3a3a", d: "M50 20a30 30 0 1 0 0.1 0z M50 42a8 8 0 1 0 0.1 0z" },
+  list:     { fill: "none",    d: "M30 32h40 M30 50h40 M30 68h26" },
+  tag:      { fill: "#ff7a29", d: "M22 52 52 22h26v26L48 78z" },
+  pen:      { fill: "#ffc21f", d: "M26 74l6-16 30-30 10 10-30 30z" },
+  note:     { fill: "#2ec5c1", d: "M40 70a8 8 0 1 0 0.1 0z M48 70V26l24-6v44 M72 64a8 8 0 1 0 0.1 0z" },
+  legal:    { fill: "#ffffff", d: "M50 22a28 28 0 1 0 0.1 0z M40 40h14a8 8 0 0 1 0 16H40z M40 40v26" },
+  person:   { fill: "#ffc21f", d: "M50 26a12 12 0 1 0 0.1 0z M26 78c0-14 11-22 24-22s24 8 24 22z" },
+  chart:    { fill: "#ff3d8b", d: "M26 74V48h10v26z M42 74V28h10v46z M58 74V56h10v18z" },
+  star:     { fill: "#ffc21f", d: "M50 20l9 20 22 3-16 15 4 22-19-11-19 11 4-22-16-15 22-3z" },
+  bulb:     { fill: "#ffc21f", d: "M50 22a18 18 0 0 0-10 33v9h20v-9a18 18 0 0 0-10-33z M42 74h16" }
+};
+
+
+/**
+ * The path for a scalloped disc, the shape behind every pictogram.
+ *
+ * Built rather than written out, because a 32 point star as a literal path is
+ * a wall of numbers nobody can check or change. This way the point count and
+ * the depth are two arguments.
+ */
+function scallopPath(points, outer, inner) {
+  const steps = [];
+
+  for (let i = 0; i < points * 2; i++) {
+    const radius = (i % 2 === 0) ? outer : inner;
+    const angle = (Math.PI * i) / points - Math.PI / 2;
+    const x = 50 + radius * Math.cos(angle);
+    const y = 50 + radius * Math.sin(angle);
+    steps.push((i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1));
+  }
+
+  return steps.join(" ") + " Z";
+}
+
+
+/** The badge: scalloped disc, white face, pictogram, and the arrow. */
+function badgeSvg(glyph, colour) {
+  const icon = NUGGET_GLYPHS[glyph] || NUGGET_GLYPHS.bulb;
+
+  return '<svg viewBox="-6 -26 126 134" xmlns="http://www.w3.org/2000/svg">'
+    + '<path d="M80 2 L114 -24 L106 16 Z" fill="' + colour
+    + '" stroke="#101010" stroke-width="6" stroke-linejoin="round"/>'
+    + '<path d="' + scallopPath(15, 50, 42) + '" fill="' + colour
+    + '" stroke="#101010" stroke-width="6" stroke-linejoin="round"/>'
+    + '<circle cx="50" cy="50" r="35" fill="#f7f5f0" stroke="#101010" stroke-width="6"/>'
+    + '<path d="' + icon.d + '" fill="' + icon.fill + '" stroke="#101010"'
+    + ' stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg>';
+}
+
+
+// Where the colour rotation currently is. Module level so it carries across
+// bubbles and songs, which is what stops two the same appearing together.
+let nuggetColourAt = 0;
+
+
 /** Puts one bubble on screen, holds it, and takes it off. */
-function popNugget(text, slot) {
+function popNugget(fact, slot) {
+  const colour = NUGGET_COLOURS[nuggetColourAt % NUGGET_COLOURS.length];
+  nuggetColourAt++;
+
   const bubble = document.createElement("div");
-  bubble.className = "nugget" + (slot.below ? " below" : "");
+  bubble.className = "nugget";
   bubble.style.left = slot.left + "%";
   bubble.style.top = slot.top + "%";
-  bubble.textContent = text;
 
+  const badge = document.createElement("div");
+  badge.className = "badge";
+  badge.innerHTML = badgeSvg(fact.icon, colour);
+
+  const body = document.createElement("div");
+  body.className = "body";
+  body.textContent = fact.text;
+
+  bubble.append(badge, body);
   el("nuggets").appendChild(bubble);
+
   void bubble.offsetWidth;
   bubble.classList.add("on");
   bloop();
@@ -2299,7 +2375,7 @@ function popNugget(text, slot) {
   nuggetTimers.push(setTimeout(() => {
     bubble.classList.remove("on");
     bubble.classList.add("off");
-    nuggetTimers.push(setTimeout(() => bubble.remove(), 260));
+    nuggetTimers.push(setTimeout(() => bubble.remove(), 240));
   }, NUGGET_SECONDS * 1000));
 }
 
