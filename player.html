@@ -2525,13 +2525,28 @@ function playCelebration(song) {
                          : who.years + " YEARS WITH COONEY PROVISIONS")
       : "";
 
-  // The request that is about to play. The house rotation has no requester, so
-  // on those the block stays empty and collapses rather than announcing that
-  // nobody in particular chose this.
+  // The request that is about to play, but ONLY when it was actually sent to
+  // the person being celebrated.
+  //
+  // THIS CHECK IS THE WHOLE POINT AND IT WAS MISSING.
+  // The first version put whatever song came next onto the card. The card
+  // picks its name from the identity map and the song comes from the queue,
+  // and nothing connected the two: a birthday card for Carlos went out
+  // carrying a dedication written for somebody called Chrissy, in front of
+  // the whole company. Two true facts side by side reading as one false one.
+  //
+  // dedicatedTo comes from a picker rather than free text, so it can be
+  // compared. If it does not name the person on the card, the card celebrates
+  // them on its own and the song plays afterwards with its dedication in the
+  // lower third where it belongs.
   const by = song && song.by ? String(song.by).trim() : "";
   const title = song && song.title ? String(song.title).trim() : "";
+  const to = song && song.dedicatedTo ? String(song.dedicatedTo).trim() : "";
 
-  if (by && title) {
+  const forThisPerson =
+    to && to.toLowerCase() === String(who.name).trim().toLowerCase();
+
+  if (by && title && forThisPerson) {
     el("celebfrom").innerHTML = "THIS ONE IS FROM <b></b>";
     el("celebfrom").querySelector("b").textContent = by.toUpperCase();
 
@@ -3117,7 +3132,8 @@ async function playRequest(item) {
     by: item.RequestedBy,
     title: item.Title,
     artist: item.Artist,
-    dedication: item.Dedication
+    dedication: item.Dedication,
+    dedicatedTo: item.DedicatedTo
   });
   if (wait) await new Promise(resolve => setTimeout(resolve, wait));
 
