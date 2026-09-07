@@ -972,10 +972,30 @@ let trackFinished = false;
 // button cannot both start it.
 let live = false;
 
-// The track played silently to find out whether this browser allows unattended
-// playback, and to open the gate on the one that does not. Any song works. It
-// is never heard: the volume is zero and it is stopped after half a second.
+// Whether this run began without anybody pressing anything, and how many songs
+// in a row have failed to start since. Together they are what lets the page
+// take back an automatic start that turned out to be wrong.
+let startedAutomatically = false;
+let deadStarts = 0;
+
+// The track played silently during the Start press to open the gate for
+// everything that follows. Any song works. It is never heard: the volume is
+// zero and it is stopped after four tenths of a second.
 const UNLOCK_SONG = "251002253";
+
+// Six hundredths of a second of true silence, as a WAV.
+//
+// THIS IS NOT THE SAME TRICK AS UNLOCK_SONG AND THE DIFFERENCE MATTERS.
+// Browsers allow inaudible media to start on its own and refuse audible media.
+// Playing something at volume zero therefore proves nothing: it succeeds on
+// every browser, including the ones that will refuse the very next song at
+// full volume. That is exactly how the jukebox came up, hid its own Start
+// button, and then failed to play anything.
+//
+// This clip has a real audio track and is played unmuted at full volume, so
+// the autoplay policy treats it as audible and answers the question honestly.
+// Every sample in it is silence, so nothing comes out of the speakers.
+const SILENT_CLIP = "data:audio/wav;base64,UklGRgQCAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YeABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=";
 
 // The YouTube fallback player. Built once at page load, reused for every video.
 let ytPlayer = null;
@@ -1949,7 +1969,7 @@ el("startbtn").addEventListener("click", async () => {
 
   await unlockAudio();
   await unlockYouTube();
-  goLive();
+  goLive(false);
 });
 
 
@@ -1987,31 +2007,30 @@ async function tryAutoStart() {
 
   debugLine("autostart: unattended playback allowed, starting");
   await unlockYouTube();
-  goLive();
+  goLive(true);
 }
 
 
 /**
- * Plays a track silently and reports whether it actually started.
+ * Asks the browser, honestly, whether it will let audible sound start without
+ * anybody touching the page.
  *
- * A refusal can arrive either as a thrown error or as a promise that resolves
- * with nothing playing, depending on the browser, so the state is checked
- * rather than trusted.
+ * Full volume and not muted, on purpose. Turning the volume down would make
+ * this pass everywhere and mean nothing. The clip itself is silence, so asking
+ * the question costs no noise.
  */
 async function audioWillStartOnItsOwn() {
   try {
-    music.volume = 0;
-    await music.setQueue({ song: UNLOCK_SONG, startPlaying: true });
-    await new Promise(resolve => setTimeout(resolve, 600));
+    const probe = new Audio(SILENT_CLIP);
+    probe.volume = 1;
+    probe.muted = false;
 
-    const started = !!music.isPlaying;
-    music.stop();
-    return started;
+    await probe.play();
+    probe.pause();
+    return true;
   } catch (error) {
-    debugLine("autostart refused: " + (error.message || error));
+    debugLine("autoplay refused: " + (error.name || error.message || error));
     return false;
-  } finally {
-    music.volume = 1;
   }
 }
 
@@ -2020,12 +2039,45 @@ async function audioWillStartOnItsOwn() {
  * Clears the Start screen and runs the jukebox. Called from the button and
  * from the automatic path, so both reach the same place by the same route.
  */
-function goLive() {
+function goLive(automatic) {
   if (live) return;
   live = true;
+  startedAutomatically = !!automatic;
+  deadStarts = 0;
 
   el("start").style.display = "none";
   begin();
+}
+
+
+/**
+ * Counts songs that never started, and puts the Start screen back if it keeps
+ * happening after an automatic start.
+ *
+ * The probe can only ever be a good answer to the question at the moment it is
+ * asked. If it is somehow wrong, or the browser changes its mind, the failure
+ * mode without this is a jukebox that took its own button away and then played
+ * nothing for the rest of the day. Two failures in a row is enough: real songs
+ * fail occasionally for their own reasons, but not twice running.
+ *
+ * A run that a person started is left alone. If they pressed the button and
+ * songs still will not play, the problem is not permission and putting the
+ * button back would only hide the real one.
+ */
+function noteDeadStart() {
+  if (!startedAutomatically) return;
+
+  deadStarts++;
+  if (deadStarts < 2) return;
+
+  debugLine("autostart was wrong, asking for a tap");
+  live = false;
+  startedAutomatically = false;
+
+  el("start").style.display = "";
+  el("startbtn").disabled = false;
+  el("startbtn").textContent = "Start the jukebox";
+  setStatus("press start to allow sound");
 }
 
 /**
@@ -2133,9 +2185,11 @@ async function tick() {
       // YouTube announces its own ending through the player events, so none
       // of the silence-watching below applies while it is on screen.
       heardItPlaying = true;
+      deadStarts = 0;
     } else if (music.isPlaying) {
       // Once we have actually heard it, silence later means it ended.
       heardItPlaying = true;
+      deadStarts = 0;
     } else if (heardItPlaying) {
       await api("markPlayed", { queueId: currentQueueId });
       currentQueueId = null;
@@ -2143,6 +2197,7 @@ async function tick() {
       await api("markPlayed", { queueId: currentQueueId });
       currentQueueId = null;
       setStatus("a track would not start");
+      noteDeadStart();
     }
   } else if (houseTrack && trackFinished) {
     // A station track finished. Nothing to report to the sheet, it just
