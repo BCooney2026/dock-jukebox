@@ -302,6 +302,77 @@
   }
   .fx-neon { animation: bugNeon 1500ms ease-out; }
 
+  /* ---- The idle loop ----------------------------------------------------
+     What the bug does between its entrance and its exit. Without this it
+     lands, sits dead still for eight seconds, then moves again, which reads
+     as two separate events rather than one continuous presence.
+
+     These are deliberately small. Anything you can consciously watch is too
+     much: they are here so the corner of the screen is never quite static,
+     not so anybody looks at it. Each one loops forever and MUST start and end
+     on identical values, or every cycle will visibly jump.
+
+     Adding another is the same three steps as a headline animation, with the
+     name going in BUG_IDLES instead. */
+
+  /* Light drifts across every few seconds. */
+  @keyframes idleShimmer {
+    0%   { background-position: 140% 0; opacity: 0; }
+    6%   { opacity: 0.75; }
+    30%  { background-position: -140% 0; opacity: 0.75; }
+    36%  { background-position: -140% 0; opacity: 0; }
+    100% { background-position: 140% 0; opacity: 0; }
+  }
+  .idle-shimmer #bugsheen { animation: idleShimmer 5200ms ease-in-out infinite; }
+
+  /* Warm amber halo, in and out. */
+  @keyframes idleGlow {
+    0%, 100% { filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+    50%      { filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85))
+                       drop-shadow(0 0 13px rgba(255,166,43,0.75)); }
+  }
+  .idle-glow #bugfx img { animation: idleGlow 2600ms ease-in-out infinite; }
+
+  /* A hard white edge that comes up and goes again. */
+  @keyframes idleOutline {
+    0%, 100% { filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+    50%      { filter: drop-shadow(0 0 1px rgba(255,255,255,0.95))
+                       drop-shadow(0 0 2px rgba(255,255,255,0.8))
+                       drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
+  }
+  .idle-outline #bugfx img { animation: idleOutline 3000ms ease-in-out infinite; }
+
+  /* Breathing. Barely there. */
+  @keyframes idleBreathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.035); }
+  }
+  .idle-breathe #bugfx { animation: idleBreathe 3400ms ease-in-out infinite; }
+
+  /* Hanging on the corner, moving slightly. */
+  @keyframes idleSway {
+    0%, 100% { transform: rotate(-0.7deg); }
+    50%      { transform: rotate(0.7deg); }
+  }
+  .idle-sway #bugfx { animation: idleSway 4200ms ease-in-out infinite; }
+
+  /* Floating, as if it is not quite fixed to the glass. */
+  @keyframes idleFloat {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-5px); }
+  }
+  .idle-float #bugfx { animation: idleFloat 3800ms ease-in-out infinite; }
+
+  /* The signal not quite locking. Long stretches of nothing, then a blink. */
+  @keyframes idleFlicker {
+    0%, 88%, 100% { opacity: 1; }
+    90%  { opacity: 0.45; }
+    92%  { opacity: 1; }
+    94%  { opacity: 0.6; }
+    96%  { opacity: 1; }
+  }
+  .idle-flicker #bugfx { animation: idleFlicker 4600ms steps(1, end) infinite; }
+
   #videobar {
     z-index: 8;
     position: fixed;
@@ -834,12 +905,19 @@ const BUG_DELAY_SECONDS = 20;
 const BUG_SECONDS = 12;
 const BUG_EVERY_SECONDS = 75;
 
-// Each appearance animates twice: once shortly after it has faded in, and a
-// different one shortly before it fades out. The gaps are measured from the
-// start and the end of the appearance, so changing BUG_SECONDS moves the
-// second one along with it. Keep the two gaps well inside BUG_SECONDS or the
-// animations will run into each other.
+// Each appearance runs the SAME headline animation twice, once shortly after
+// it has faded in and once shortly before it fades out, so it arrives and
+// leaves the same way. In between it runs a subtle loop, because a bug that
+// lands and then holds perfectly still for eight seconds reads as two separate
+// events rather than one continuous presence.
+//
+// The gaps are measured from the start and the end of the appearance, so
+// changing BUG_SECONDS moves the exit along with it. BUG_HEADLINE_SECONDS is
+// how long to let the entrance finish before the loop takes over, and it needs
+// to be at least as long as the slowest headline animation in the stylesheet,
+// which is the shimmer at 1.9 seconds.
 const BUG_ENTER_DELAY_SECONDS = 0.7;
+const BUG_HEADLINE_SECONDS = 2.0;
 const BUG_EXIT_LEAD_SECONDS = 1.8;
 
 // Nothing runs longer than this, so the schedule stops here rather than
@@ -853,6 +931,12 @@ const BUG_MAX_MINUTES = 12;
 const BUG_ANIMATIONS = [
   "shimmer", "buzz", "flash", "glitch", "tvon",
   "roll", "punch", "wobble", "slide", "neon"
+];
+
+// The quiet loops that run between the entrance and the exit. Picked the same
+// way and just as independent: each needs a matching .idle- rule above.
+const BUG_IDLES = [
+  "shimmer", "glow", "outline", "breathe", "sway", "float", "flicker"
 ];
 
 // How often to check the queue, in milliseconds.
@@ -1620,63 +1704,98 @@ function scheduleBug() {
 
   for (let at = BUG_DELAY_SECONDS; at < runFor; at += BUG_EVERY_SECONDS) {
     const enter = at + BUG_ENTER_DELAY_SECONDS;
+    const settle = enter + BUG_HEADLINE_SECONDS;
     const exit = at + BUG_SECONDS - BUG_EXIT_LEAD_SECONDS;
 
     titleTimers.push(setTimeout(showBug, at * 1000));
-    titleTimers.push(setTimeout(playBugAnimation, enter * 1000));
-    titleTimers.push(setTimeout(playBugAnimation, exit * 1000));
+    titleTimers.push(setTimeout(playHeadline, enter * 1000));
+    titleTimers.push(setTimeout(startIdle, settle * 1000));
+    titleTimers.push(setTimeout(playHeadline, exit * 1000));
     titleTimers.push(setTimeout(hideBug, (at + BUG_SECONDS) * 1000));
   }
 }
 
 
-// The animation used last time, so the next one is never the same. Held across
+// What ran last time, so the next appearance is never a repeat. Held across
 // songs on purpose: two appearances in a row look identical to whoever is
-// watching whether or not a song changed in between.
-let lastBugAnimation = "";
+// watching, whether or not a song changed in between.
+let lastHeadline = "";
+let lastIdle = "";
+
+// The headline chosen for the appearance currently on screen. Kept because the
+// exit deliberately replays the entrance rather than picking again.
+let thisHeadline = "";
 
 
-/** Fades the bug in. The animations are scheduled separately. */
+/**
+ * Fades the bug in and decides how this appearance will arrive and leave.
+ *
+ * The headline is chosen here, once, rather than at each of the two moments it
+ * plays. That is what makes the exit match the entrance.
+ */
 function showBug() {
   clearBugAnimation();
+
+  thisHeadline = pickDifferent(BUG_ANIMATIONS, lastHeadline);
+  lastHeadline = thisHeadline;
+
   el("bug").classList.add("up");
 }
 
 
 /**
- * Runs one randomly chosen animation, never the one that ran last.
+ * Runs this appearance's headline animation. Called twice, on the way in and
+ * on the way out, with the same animation both times.
  *
- * Called twice per appearance, so the two are always different from each other
- * and from whatever ran on the previous appearance.
- *
- * The animation class goes on #bugfx while the visibility class stays on #bug,
- * so an animation that plays with opacity cannot fight the fade. Forcing a
- * reflow between removing and adding the class is what lets an animation run
- * again at all: without it the browser sees an unchanged class list and does
- * nothing.
+ * The class goes on #bugfx while the visibility class stays on #bug, so an
+ * animation that plays with opacity cannot fight the fade. Forcing a reflow
+ * between removing and adding the class is what lets it run a second time at
+ * all: without it the browser sees an unchanged class list and does nothing.
  */
-function playBugAnimation() {
+function playHeadline() {
   const fx = el("bugfx");
 
   clearBugAnimation();
   void fx.offsetWidth;
 
-  const choices = BUG_ANIMATIONS.filter(name => name !== lastBugAnimation);
-  const picked = choices[Math.floor(Math.random() * choices.length)];
-
-  lastBugAnimation = picked;
-  fx.classList.add("fx-" + picked);
+  fx.classList.add("fx-" + thisHeadline);
 }
 
 
-/** Takes whichever animation is on off again. */
+/** Starts the quiet loop that carries the middle of the appearance. */
+function startIdle() {
+  const bug = el("bug");
+
+  clearBugAnimation();
+
+  const picked = pickDifferent(BUG_IDLES, lastIdle);
+  lastIdle = picked;
+
+  // On #bug rather than #bugfx because several idles animate #bugfx itself,
+  // and an element cannot both carry the class and be its target.
+  bug.classList.add("idle-" + picked);
+}
+
+
+/** A random pick from a list that is never the given one. */
+function pickDifferent(list, avoid) {
+  const choices = list.filter(name => name !== avoid);
+  const from = choices.length > 0 ? choices : list;
+  return from[Math.floor(Math.random() * from.length)];
+}
+
+
+/** Takes every headline and idle animation back off. */
 function clearBugAnimation() {
+  const bug = el("bug");
   const fx = el("bugfx");
+
   BUG_ANIMATIONS.forEach(name => fx.classList.remove("fx-" + name));
+  BUG_IDLES.forEach(name => bug.classList.remove("idle-" + name));
 }
 
 
-/** Fades the bug out and takes the animation off with it. */
+/** Fades the bug out and takes the animations off with it. */
 function hideBug() {
   el("bug").classList.remove("up");
   clearBugAnimation();
