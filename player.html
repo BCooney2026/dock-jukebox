@@ -182,6 +182,51 @@
   }
   #celebrate .years:empty { display: none; }
 
+  /* The request that follows the card. This is the half that was missing:
+     without it the card is a screensaver with somebody's name on it. A
+     request has two people in it and both of them should be on the wall, the
+     one being celebrated and the one who went to the trouble. */
+  #celebrate .request {
+    margin-top: 1.6vh;
+    opacity: 0;
+    animation: celebYears 700ms cubic-bezier(0.2, 1.3, 0.4, 1) 1500ms forwards;
+  }
+  #celebrate .request:empty { display: none; }
+
+  #celebrate .from {
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(18px, 4.2vh, 52px);
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.72);
+  }
+  #celebrate .from b {
+    color: var(--amber);
+    font-weight: inherit;
+  }
+
+  #celebrate .song {
+    font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(20px, 4.6vh, 56px);
+    color: #fff;
+    margin-top: 0.4vh;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.85);
+  }
+  #celebrate .song span {
+    font-weight: 400;
+    color: rgba(255,255,255,0.75);
+  }
+
+  #celebrate .note {
+    font-style: italic;
+    font-weight: 600;
+    font-size: clamp(18px, 3.8vh, 46px);
+    color: var(--amber);
+    margin-top: 1vh;
+    max-width: 70vw;
+  }
+  #celebrate .note:empty { display: none; }
+
   #celebrate .mark {
     position: relative;
     z-index: 2;
@@ -1033,6 +1078,11 @@
       <div class="kicker" id="celebkicker"></div>
       <div class="who" id="celebwho"></div>
       <div class="years" id="celebyears"></div>
+      <div class="request" id="celebrequest">
+        <div class="from" id="celebfrom"></div>
+        <div class="song" id="celebsong"></div>
+        <div class="note" id="celebnote"></div>
+      </div>
     </div>
     <img class="mark" src="cp-music-tv.png" alt="">
   </div>
@@ -2112,7 +2162,7 @@ let bugListening = false;
 // How long the card holds, and how often the list is refreshed. The refresh
 // exists so a player left running for weeks notices the date changing without
 // anybody reloading it.
-const CELEBRATE_SECONDS = 9;
+const CELEBRATE_SECONDS = 11;
 const CELEBRATE_REFRESH_MS = 60 * 60 * 1000;
 
 // Today's people, and which of them has already been shown. Everyone gets one
@@ -2427,11 +2477,17 @@ async function loadCelebrations() {
 /**
  * Plays one celebration card, if anybody is owed one.
  *
- * Returns how long the caller should wait before starting the next song, so
+ * song is the track about to play, and it goes ON THE CARD. A request has two
+ * people in it: the one being celebrated and the one who went to the trouble
+ * of sending something. Naming only the first turns a gesture into a
+ * screensaver, so the card credits both, names the track, and carries any
+ * dedication that came with it.
+ *
+ * Returns how long the caller should wait before starting the song, so
  * playback pauses for exactly as long as the card is up and not a moment more.
  * Returns 0 when there is nothing to show, which is most days.
  */
-function playCelebration() {
+function playCelebration(song) {
   if (!celebrations.length) return 0;
 
   const who = celebrations[celebrateNext % celebrations.length];
@@ -2451,6 +2507,34 @@ function playCelebration() {
       ? (who.years === 1 ? "1 YEAR WITH COONEY PROVISIONS"
                          : who.years + " YEARS WITH COONEY PROVISIONS")
       : "";
+
+  // The request that is about to play. The house rotation has no requester, so
+  // on those the block stays empty and collapses rather than announcing that
+  // nobody in particular chose this.
+  const by = song && song.by ? String(song.by).trim() : "";
+  const title = song && song.title ? String(song.title).trim() : "";
+
+  if (by && title) {
+    el("celebfrom").innerHTML = "THIS ONE IS FROM <b></b>";
+    el("celebfrom").querySelector("b").textContent = by.toUpperCase();
+
+    el("celebsong").textContent = title;
+    if (song.artist) {
+      const artist = document.createElement("span");
+      // Escaped rather than typed, so the separator cannot come out as "Â·"
+      // if this file is ever saved or served as anything but UTF-8.
+      artist.textContent = "  \u00B7  " + song.artist;
+      el("celebsong").appendChild(artist);
+    }
+
+    // textContent, never innerHTML: the dedication is the one string here a
+    // person typed, and it is already cleaned by the API.
+    el("celebnote").textContent = song.dedication || "";
+  } else {
+    el("celebfrom").textContent = "";
+    el("celebsong").textContent = "";
+    el("celebnote").textContent = "";
+  }
 
   // Restart the animations. Same reflow trick as the bug: without it a second
   // card reuses the finished ones and appears with no entrance at all.
@@ -3012,7 +3096,12 @@ async function playRequest(item) {
   // Between songs, never over one. The card holds the picture for a few
   // seconds and the song starts after it, so a birthday never talks over
   // somebody's request.
-  const wait = playCelebration();
+  const wait = playCelebration({
+    by: item.RequestedBy,
+    title: item.Title,
+    artist: item.Artist,
+    dedication: item.Dedication
+  });
   if (wait) await new Promise(resolve => setTimeout(resolve, wait));
 
   try {
