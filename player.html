@@ -103,11 +103,11 @@
   }
 
   /* ---- The network bug --------------------------------------------------
-     Bottom left. It shares that corner with the lower third, which is fine
-     because they never share a moment: the titles run from
-     TITLE_DELAY_SECONDS to TITLE_DELAY_SECONDS + TITLE_SECONDS, and the bug
-     does not appear until BUG_DELAY_SECONDS, well after they have gone. If
-     you shorten BUG_DELAY_SECONDS below about 16, check that.
+     Bottom right, opposite the lower third, which owns the bottom left. They
+     never overlap in time either, but sharing a corner would still make that
+     corner mean two different things at two different moments. Broadcast has
+     put the bug opposite the character generator for thirty years for exactly
+     that reason. Same gradient, so it reads just as well.
 
      Two nested elements on purpose. #bug owns whether it is on screen at all,
      which is a plain opacity fade. #bugfx owns the entrance animation. Keeping
@@ -118,7 +118,7 @@
     z-index: 9;
     position: fixed;
     bottom: 4vh;
-    left: 4vw;
+    right: 4vw;
     width: 17vw;
     max-width: 340px;
     min-width: 150px;
@@ -131,11 +131,15 @@
      takes it away. A fade here would run alongside them and turn one movement
      into two overlapping ones, which is what made arriving and leaving feel
      disconnected from the animation in between. */
-  #bug.up { opacity: 0.86; }
+  /* 0.7, not higher. A bug is a watermark: at 0.86 with a hard drop shadow it
+     was competing with the video rather than sitting on top of it. */
+  #bug.up { opacity: 0.7; }
 
   #bugfx {
     position: relative;
-    transform-origin: bottom left;
+    /* Matches the corner it is anchored to, so scaling and rotation pivot on
+       the corner rather than dragging the logo away from it. */
+    transform-origin: bottom right;
   }
 
   #bugfx img {
@@ -241,28 +245,32 @@
   }
   .fx-buzz-out { animation: bugBuzzOut 800ms steps(1, end) forwards; }
 
-  /* Cuts in. */
+  /* Cuts in.
+
+     THE TIMING HERE IS A SAFETY LIMIT, NOT A TASTE DECISION.
+     This and the neon pair are the only animations that cut between fully
+     visible and fully dark. Flashing faster than three times a second is the
+     range that can trigger photosensitive seizures, and this plays on a screen
+     twenty five people walk past. Every state change in these four keyframes
+     is at least a third of a second from the next. Keep it that way: if you
+     shorten the duration, take cuts out to match. */
   @keyframes bugFlashIn {
-    0%, 14%, 28%, 42% { opacity: 0; }
-    7%, 21%, 35%      { opacity: 1; filter: brightness(3); }
-    50%  { opacity: 1; filter: brightness(1.6); }
-    58%  { opacity: 0.15; }
+    0%   { opacity: 0; }
+    25%  { opacity: 1; filter: brightness(2.6); }
+    50%  { opacity: 0; }
+    75%  { opacity: 1; filter: brightness(1.8); }
     100% { opacity: 1; filter: brightness(1); }
   }
-  .fx-flash-in { animation: bugFlashIn 900ms steps(1, end); }
+  .fx-flash-in { animation: bugFlashIn 1500ms steps(1, end); }
 
   /* Cuts out, ending dark. */
   @keyframes bugFlashOut {
     0%   { opacity: 1; filter: brightness(1); }
-    16%  { opacity: 0; }
-    26%  { opacity: 1; filter: brightness(3.5); }
-    42%  { opacity: 0; }
-    54%  { opacity: 1; filter: brightness(2); }
-    68%  { opacity: 0; }
-    78%  { opacity: 0.7; }
+    33%  { opacity: 0; }
+    66%  { opacity: 1; filter: brightness(3); }
     100% { opacity: 0; }
   }
-  .fx-flash-out { animation: bugFlashOut 700ms steps(1, end) forwards; }
+  .fx-flash-out { animation: bugFlashOut 1200ms steps(1, end) forwards; }
 
   /* Tears into place. */
   @keyframes bugGlitchIn {
@@ -383,13 +391,13 @@
   }
   .fx-wobble-out { animation: bugWobbleOut 900ms cubic-bezier(0.5, 0, 0.9, 0.5) forwards; }
 
-  /* Thrown on from off the left edge. */
+  /* Thrown on from off the right edge, which is the edge it now lives on. */
   @keyframes bugSlideIn {
-    0%   { opacity: 0; transform: translateX(-180%) skewX(14deg); }
+    0%   { opacity: 0; transform: translateX(180%) skewX(-14deg); }
     16%  { opacity: 1; }
-    58%  { transform: translateX(16%) skewX(-6deg); }
-    76%  { transform: translateX(-6%) skewX(2deg); }
-    90%  { transform: translateX(2%); }
+    58%  { transform: translateX(-16%) skewX(6deg); }
+    76%  { transform: translateX(6%) skewX(-2deg); }
+    90%  { transform: translateX(-2%); }
     100% { opacity: 1; transform: translateX(0) skewX(0); }
   }
   .fx-slide-in { animation: bugSlideIn 900ms cubic-bezier(0.25, 1, 0.35, 1); }
@@ -397,38 +405,32 @@
   /* Winds back and leaves the same way it came. */
   @keyframes bugSlideOut {
     0%   { opacity: 1; transform: translateX(0) skewX(0); }
-    26%  { transform: translateX(9%) skewX(-4deg); }
-    100% { opacity: 0; transform: translateX(-190%) skewX(18deg); }
+    26%  { transform: translateX(-9%) skewX(4deg); }
+    100% { opacity: 0; transform: translateX(190%) skewX(-18deg); }
   }
   .fx-slide-out { animation: bugSlideOut 700ms cubic-bezier(0.5, 0, 0.8, 0.3) forwards; }
 
-  /* An amber tube striking and levelling off. */
+  /* An amber tube striking and levelling off. Same three-per-second limit as
+     the flash pair above: two strikes, well apart, rather than a stutter. */
   @keyframes bugNeonIn {
     0%   { opacity: 0; filter: brightness(0.15) drop-shadow(0 0 0 rgba(255,166,43,0)); }
-    10%  { opacity: 1; filter: brightness(2.8) drop-shadow(0 0 34px rgba(255,166,43,1)); }
-    20%  { opacity: 0.2; }
-    32%  { opacity: 1; filter: brightness(2.5) drop-shadow(0 0 30px rgba(255,166,43,0.95)); }
-    42%  { opacity: 0.3; }
-    56%  { opacity: 1; filter: brightness(2.2) drop-shadow(0 0 26px rgba(255,166,43,0.9)); }
-    72%  { filter: brightness(0.7) drop-shadow(0 0 12px rgba(255,166,43,0.6)); }
-    86%  { filter: brightness(1.5) drop-shadow(0 0 18px rgba(255,166,43,0.7)); }
+    18%  { opacity: 1; filter: brightness(2.8) drop-shadow(0 0 34px rgba(255,166,43,1)); }
+    39%  { opacity: 0.2; filter: brightness(0.3); }
+    60%  { opacity: 1; filter: brightness(2.4) drop-shadow(0 0 28px rgba(255,166,43,0.9)); }
+    80%  { filter: brightness(1.3) drop-shadow(0 0 16px rgba(255,166,43,0.65)); }
     100% { opacity: 1; filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
   }
-  .fx-neon-in { animation: bugNeonIn 1400ms ease-out; }
+  .fx-neon-in { animation: bugNeonIn 1800ms ease-out; }
 
   /* The tube dying: one last surge, then it gutters out. */
   @keyframes bugNeonOut {
     0%   { opacity: 1; filter: brightness(1) drop-shadow(0 2px 5px rgba(0,0,0,0.85)); }
-    18%  { opacity: 1; filter: brightness(3.2) drop-shadow(0 0 40px rgba(255,166,43,1)); }
-    30%  { opacity: 0.15; filter: brightness(0.2); }
-    42%  { opacity: 1; filter: brightness(2.4) drop-shadow(0 0 28px rgba(255,166,43,0.9)); }
-    54%  { opacity: 0.1; filter: brightness(0.15); }
-    66%  { opacity: 0.8; filter: brightness(1.4) drop-shadow(0 0 14px rgba(255,166,43,0.6)); }
-    80%  { opacity: 0.08; }
-    90%  { opacity: 0.4; filter: brightness(0.6); }
+    25%  { opacity: 1; filter: brightness(3.2) drop-shadow(0 0 40px rgba(255,166,43,1)); }
+    50%  { opacity: 0.15; filter: brightness(0.2); }
+    75%  { opacity: 0.9; filter: brightness(1.6) drop-shadow(0 0 18px rgba(255,166,43,0.7)); }
     100% { opacity: 0; filter: brightness(0.1); }
   }
-  .fx-neon-out { animation: bugNeonOut 1000ms ease-in forwards; }
+  .fx-neon-out { animation: bugNeonOut 1400ms ease-in forwards; }
 
   /* ---- The idle loop ----------------------------------------------------
      What the bug does between its entrance and its exit. Without this it
@@ -1049,10 +1051,10 @@ const BUG_EVERY_SECONDS = 75;
 // shimmer at 1.9 seconds.
 // How long to let an arrival finish before the idle loop takes over, and how
 // long before the end to start the departure. It has to be at least as long as
-// the slowest animation in the stylesheet, which is the neon at 1.4 seconds.
-// There is no separate delay before the arrival any more: the animation is the
-// arrival, and it starts the instant the bug is put on screen.
-const BUG_HEADLINE_SECONDS = 1.6;
+// the slowest animation in the stylesheet, which is the neon arrival at 1.8
+// seconds. There is no separate delay before the arrival any more: the
+// animation is the arrival, and it starts the instant the bug goes on screen.
+const BUG_HEADLINE_SECONDS = 2.0;
 
 // Nothing runs longer than this, so the schedule stops here rather than
 // leaving timers behind on a song that was skipped.
