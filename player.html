@@ -103,13 +103,17 @@
   }
 
   /* ---- The celebration card ----------------------------------------------
-     Full screen, between songs. Not a corner graphic and not a lower third:
-     the point is that everybody in the building looks up, so it takes the
-     whole picture for a few seconds the way a station ident would.
+     Full screen, between songs, with fireworks behind it and audio to match.
+     The point is that everybody in the building looks up, so it takes the
+     whole picture and makes a noise. A quiet caption does not do that.
 
-     Built out of the same parts as the bug, deliberately. Same amber, same
-     scalloped disc, same hard outline. It should read as the same channel
-     doing something bigger, not as a different app. */
+     Three layers: a canvas doing the fireworks and confetti, the type on top
+     of it, and the mark underneath. The canvas is the only thing here that is
+     not CSS, because particles are not a keyframe animation.
+
+     Same amber, same typefaces, same entrance vocabulary as the network bug,
+     so it reads as this channel doing something big rather than a different
+     app breaking in. */
   #celebrate {
     position: fixed;
     inset: 0;
@@ -118,60 +122,99 @@
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 2.5vh;
-    background: #0c0a09;
+    gap: 1.4vh;
+    background: radial-gradient(circle at 50% 45%, #1c1410 0%, #070605 70%);
     text-align: center;
     pointer-events: none;
+    overflow: hidden;
   }
   #celebrate.on { display: flex; }
 
+  #celebfx {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  #celebrate .stack {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.2vh;
+  }
+
   #celebrate .kicker {
     font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: clamp(20px, 4.5vh, 54px);
-    letter-spacing: 0.3em;
+    font-size: clamp(24px, 6vh, 74px);
+    letter-spacing: 0.34em;
     color: var(--amber);
+    text-shadow: 0 0 3vh rgba(255,166,43,0.6);
     opacity: 0;
-    animation: celebKicker 700ms ease-out 250ms forwards;
+    animation: celebKicker 600ms cubic-bezier(0.2, 1.3, 0.4, 1) 200ms forwards;
   }
+
+  /* The big one. Deliberately enormous: at 20vh a long nickname still fits
+     across a 16:9 frame and a short one is unmissable from the far dock door. */
   #celebrate .who {
     font-family: 'Josefin Sans', 'Century Gothic', system-ui, sans-serif;
     font-weight: 700;
-    font-size: clamp(44px, 13vh, 170px);
-    line-height: 1;
+    font-size: clamp(60px, 20vh, 260px);
+    line-height: 0.95;
     color: #fff;
     text-transform: uppercase;
-    text-shadow: 3px 3px 0 rgba(0,0,0,0.85);
+    text-shadow: 0 0 6vh rgba(255,166,43,0.55), 4px 4px 0 rgba(0,0,0,0.9);
     opacity: 0;
-    animation: celebWho 900ms cubic-bezier(0.2, 1.2, 0.3, 1) 500ms forwards;
+    animation: celebWho 800ms cubic-bezier(0.15, 1.4, 0.3, 1) 420ms forwards,
+               celebPulse 1400ms ease-in-out 1300ms infinite;
   }
+
   #celebrate .years {
     font-family: 'Bebas Neue', system-ui, sans-serif;
-    font-size: clamp(24px, 6.5vh, 80px);
-    letter-spacing: 0.12em;
+    font-size: clamp(26px, 7vh, 92px);
+    letter-spacing: 0.14em;
     color: var(--amber);
+    text-shadow: 0 0 3vh rgba(255,166,43,0.5);
     opacity: 0;
-    animation: celebKicker 700ms ease-out 1100ms forwards;
+    animation: celebYears 700ms cubic-bezier(0.2, 1.3, 0.4, 1) 1000ms forwards;
   }
+  #celebrate .years:empty { display: none; }
+
   #celebrate .mark {
-    width: 26vw;
-    max-width: 520px;
+    position: relative;
+    z-index: 2;
+    width: 22vw;
+    max-width: 460px;
     opacity: 0;
-    animation: celebMark 900ms ease-out 1400ms forwards;
+    animation: celebMark 800ms ease-out 1500ms forwards;
   }
 
   @keyframes celebKicker {
-    0%   { opacity: 0; transform: translateY(14px); }
-    100% { opacity: 1; transform: translateY(0); }
+    0%   { opacity: 0; transform: translateY(-30px) scale(0.8); letter-spacing: 0.8em; }
+    100% { opacity: 1; transform: translateY(0) scale(1); letter-spacing: 0.34em; }
   }
   @keyframes celebWho {
-    0%   { opacity: 0; transform: scale(2.2); filter: blur(12px); }
-    55%  { opacity: 1; transform: scale(0.94); filter: blur(0); }
-    78%  { transform: scale(1.04); }
-    100% { opacity: 1; transform: scale(1); }
+    0%   { opacity: 0; transform: scale(3) rotate(-8deg); filter: blur(20px); }
+    50%  { opacity: 1; transform: scale(0.88) rotate(2deg); filter: blur(0); }
+    72%  { transform: scale(1.08) rotate(-1deg); }
+    88%  { transform: scale(0.97); }
+    100% { opacity: 1; transform: scale(1) rotate(0); }
+  }
+  /* A slow breath after it lands, so the screen is never completely still. */
+  @keyframes celebPulse {
+    0%, 100% { text-shadow: 0 0 6vh rgba(255,166,43,0.55), 4px 4px 0 rgba(0,0,0,0.9); }
+    50%      { text-shadow: 0 0 11vh rgba(255,166,43,0.95), 4px 4px 0 rgba(0,0,0,0.9); }
+  }
+  @keyframes celebYears {
+    0%   { opacity: 0; transform: translateY(34px) scale(0.7); }
+    60%  { opacity: 1; transform: translateY(-6px) scale(1.06); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
   }
   @keyframes celebMark {
-    0%   { opacity: 0; transform: translateY(20px); }
-    100% { opacity: 0.85; transform: translateY(0); }
+    0%   { opacity: 0; transform: translateY(28px) scale(0.85); }
+    100% { opacity: 0.9; transform: translateY(0) scale(1); }
   }
 
   /* ---- The network bug --------------------------------------------------
@@ -985,9 +1028,12 @@
   <div id="screen"></div>
   <div id="ytframe"><div id="ytmount"></div></div>
   <div id="celebrate">
-    <div class="kicker" id="celebkicker"></div>
-    <div class="who" id="celebwho"></div>
-    <div class="years" id="celebyears"></div>
+    <canvas id="celebfx"></canvas>
+    <div class="stack">
+      <div class="kicker" id="celebkicker"></div>
+      <div class="who" id="celebwho"></div>
+      <div class="years" id="celebyears"></div>
+    </div>
     <img class="mark" src="cp-music-tv.png" alt="">
   </div>
   <div id="bug">
@@ -2066,7 +2112,7 @@ let bugListening = false;
 // How long the card holds, and how often the list is refreshed. The refresh
 // exists so a player left running for weeks notices the date changing without
 // anybody reloading it.
-const CELEBRATE_SECONDS = 7;
+const CELEBRATE_SECONDS = 9;
 const CELEBRATE_REFRESH_MS = 60 * 60 * 1000;
 
 // Today's people, and which of them has already been shown. Everyone gets one
@@ -2075,6 +2121,284 @@ const CELEBRATE_REFRESH_MS = 60 * 60 * 1000;
 let celebrations = [];
 let celebrateNext = 0;
 let celebrateShownFor = "";
+
+
+// The fireworks. Colours are the channel's own, so the burst and the logo are
+// obviously the same thing rather than generic party confetti.
+const CELEBRATE_COLOURS = ["#ffa62b", "#ff3d8b", "#2ec5c1", "#ffe066", "#ffffff"];
+
+// How often a shell goes up while the card is on screen, and how many sparks
+// each one throws. Sparks are the expensive part: 90 is lively on a Mac and
+// still fine on the weakest thing likely to run this.
+const FIREWORK_EVERY_MS = 520;
+const FIREWORK_SPARKS = 90;
+
+// The animation loop's handle, so a card that is dismissed early takes its
+// fireworks with it rather than leaving them running behind the next song.
+let celebFrame = null;
+let celebTimers = [];
+
+
+/**
+ * Runs fireworks on the canvas for as long as the card is up.
+ *
+ * Shells launch from the bottom, arc up under gravity, and burst into sparks
+ * that fade. Confetti falls throughout. It is a plain particle loop rather
+ * than a library: about seventy lines, nothing to install, and nothing else in
+ * this project needs a physics engine.
+ */
+function startFireworks(seconds) {
+  const canvas = el("celebfx");
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+
+  const W = canvas.width;
+  const H = canvas.height;
+  // Tuned so a shell reaches its apex about a third of the way down from the
+  // top after roughly three quarters of a second. The first attempt used a
+  // gravity a tenth of this and the shells simply left the screen: they were
+  // still climbing when they passed the top edge and burst three seconds later
+  // somewhere above the television. Nothing was visibly wrong in the code, and
+  // nothing appeared on screen either.
+  const GRAVITY = H / 1560;
+
+  let shells = [];
+  let sparks = [];
+  let confetti = [];
+
+  for (let i = 0; i < 90; i++) {
+    confetti.push({
+      x: Math.random() * W,
+      y: Math.random() * -H,
+      w: 5 + Math.random() * 7,
+      h: 9 + Math.random() * 12,
+      vy: 1.4 + Math.random() * 2.4,
+      spin: (Math.random() - 0.5) * 0.22,
+      angle: Math.random() * Math.PI,
+      colour: CELEBRATE_COLOURS[Math.floor(Math.random() * CELEBRATE_COLOURS.length)]
+    });
+  }
+
+  function launch() {
+    const colour = CELEBRATE_COLOURS[Math.floor(Math.random() * CELEBRATE_COLOURS.length)];
+    shells.push({
+      x: W * (0.15 + Math.random() * 0.7),
+      y: H,
+      vx: (Math.random() - 0.5) * 1.6,
+      vy: -(H / 35) * (0.85 + Math.random() * 0.3),
+      colour: colour
+    });
+    whistle();
+  }
+
+  function burst(shell) {
+    boom();
+    for (let i = 0; i < FIREWORK_SPARKS; i++) {
+      const angle = (Math.PI * 2 * i) / FIREWORK_SPARKS + Math.random() * 0.1;
+      const speed = (H / 150) * (0.3 + Math.random() * 1.0);
+      sparks.push({
+        x: shell.x, y: shell.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        fade: 0.010 + Math.random() * 0.012,
+        colour: shell.colour
+      });
+    }
+  }
+
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+
+    shells = shells.filter(shell => {
+      shell.x += shell.vx;
+      shell.y += shell.vy;
+      shell.vy += GRAVITY;
+
+      // Bursts at the top of the arc, which is what a real shell does and what
+      // stops them all going off at the same height.
+      if (shell.vy >= 0) { burst(shell); return false; }
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = shell.colour;
+      ctx.fillRect(shell.x - 2, shell.y - 2, 4, 8);
+      return true;
+    });
+
+    sparks = sparks.filter(spark => {
+      spark.x += spark.vx;
+      spark.y += spark.vy;
+      spark.vy += GRAVITY * 0.55;
+      spark.vx *= 0.985;
+      spark.life -= spark.fade;
+      if (spark.life <= 0) return false;
+
+      ctx.globalAlpha = Math.max(spark.life, 0);
+      ctx.fillStyle = spark.colour;
+      ctx.beginPath();
+      ctx.arc(spark.x, spark.y, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+      return true;
+    });
+
+    confetti.forEach(bit => {
+      bit.y += bit.vy;
+      bit.angle += bit.spin;
+      if (bit.y > H + 20) { bit.y = -20; bit.x = Math.random() * W; }
+
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = bit.colour;
+      ctx.save();
+      ctx.translate(bit.x, bit.y);
+      ctx.rotate(bit.angle);
+      ctx.fillRect(-bit.w / 2, -bit.h / 2, bit.w, bit.h);
+      ctx.restore();
+    });
+
+    ctx.globalAlpha = 1;
+    celebFrame = requestAnimationFrame(frame);
+  }
+
+  launch();
+  const launcher = setInterval(launch, FIREWORK_EVERY_MS);
+  celebTimers.push(launcher);
+  celebTimers.push(setTimeout(() => clearInterval(launcher),
+    (seconds * 1000) - FIREWORK_EVERY_MS));
+
+  frame();
+}
+
+
+/** Stops the fireworks and clears the canvas. */
+function stopFireworks() {
+  if (celebFrame) cancelAnimationFrame(celebFrame);
+  celebFrame = null;
+
+  celebTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
+  celebTimers = [];
+
+  const canvas = el("celebfx");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+
+// ---------------------------------------------------------------------------
+// The noise
+//
+// All generated, nothing sampled. No audio files in the repository, no vendor,
+// and nothing of anybody else's. It runs on its own AudioContext, deliberately
+// separate from MusicKit, so it can never interfere with a song. It also only
+// ever plays between songs, so it is never competing with one.
+// ---------------------------------------------------------------------------
+
+function celebAudio() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  if (!celebAudio.ctx) celebAudio.ctx = new Ctx();
+  return celebAudio.ctx;
+}
+
+
+/** The rising whistle of a shell going up. */
+function whistle() {
+  const ctx = celebAudio();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(420, now);
+    osc.frequency.exponentialRampToValueAtTime(1500, now + 0.55);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.05, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.62);
+  } catch (error) {
+    // Silence is survivable.
+  }
+}
+
+
+/**
+ * The bang.
+ *
+ * White noise through a lowpass that sweeps down, which is what gives an
+ * explosion its shape: bright at the crack, then all low rumble. A plain noise
+ * burst sounds like static instead.
+ */
+function boom() {
+  const ctx = celebAudio();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    const length = Math.floor(ctx.sampleRate * 0.9);
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.2);
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(4200, now);
+    filter.frequency.exponentialRampToValueAtTime(180, now + 0.55);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.55, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.85);
+
+    source.connect(filter).connect(gain).connect(ctx.destination);
+    source.start(now);
+  } catch (error) {
+    // Silence is survivable.
+  }
+}
+
+
+/** A short major fanfare under the name landing. */
+function fanfare() {
+  const ctx = celebAudio();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    // A major triad plus the octave, arriving one after another rather than
+    // together, which is what makes it read as a fanfare and not a chord.
+    [[392, 0], [494, 0.10], [587, 0.20], [784, 0.30]].forEach(pair => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const at = now + pair[1];
+
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(pair[0], at);
+
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.linearRampToValueAtTime(0.16, at + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 1.1);
+
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(at);
+      osc.stop(at + 1.2);
+    });
+  } catch (error) {
+    // Silence is survivable.
+  }
+}
 
 
 /** Asks the API whose day it is, and starts again when the date rolls over. */
@@ -2130,11 +2454,22 @@ function playCelebration() {
 
   // Restart the animations. Same reflow trick as the bug: without it a second
   // card reuses the finished ones and appears with no entrance at all.
+  stopFireworks();
   card.classList.remove("on");
   void card.offsetWidth;
   card.classList.add("on");
 
-  setTimeout(() => card.classList.remove("on"), CELEBRATE_SECONDS * 1000);
+  // The canvas has to be visible before it can be measured, so the fireworks
+  // start on the next frame rather than this one.
+  requestAnimationFrame(() => startFireworks(CELEBRATE_SECONDS));
+
+  // Timed to the name landing at 420ms rather than to the card appearing.
+  setTimeout(fanfare, 420);
+
+  setTimeout(() => {
+    card.classList.remove("on");
+    stopFireworks();
+  }, CELEBRATE_SECONDS * 1000);
 
   return CELEBRATE_SECONDS * 1000;
 }
