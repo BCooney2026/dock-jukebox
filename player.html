@@ -102,6 +102,34 @@
     border: 0;
   }
 
+  /* The network bug. Top right, because the lower third owns the bottom left
+     and the two must never share an edge. Semi-transparent with a hard drop
+     shadow, which is how a broadcast bug stayed legible over a bright frame
+     without ever becoming the brightest thing on screen. It is a watermark,
+     not a title card: if anyone reads it on purpose it is too loud. */
+  #bug {
+    z-index: 9;
+    position: fixed;
+    top: 3.5vh;
+    right: 3.5vw;
+    width: 17vw;
+    max-width: 340px;
+    min-width: 150px;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 900ms ease, transform 900ms ease;
+    pointer-events: none;
+  }
+  #bug.up {
+    opacity: 0.82;
+    transform: translateY(0);
+  }
+  #bug img {
+    width: 100%;
+    display: block;
+    filter: drop-shadow(0 2px 5px rgba(0,0,0,0.85));
+  }
+
   #videobar {
     z-index: 8;
     position: fixed;
@@ -471,6 +499,7 @@
 <div id="videostage">
   <div id="screen"></div>
   <div id="ytframe"><div id="ytmount"></div></div>
+  <div id="bug"><img src="cp-music-tv.png" alt=""></div>
   <div id="videobar">
     <div id="vcard">
       <div class="vartist" id="vartist"></div>
@@ -617,6 +646,19 @@ const NOT_THE_VIDEO = [
 // The requester's name is not affected and stays up for the whole song.
 const TITLE_DELAY_SECONDS = 4;
 const TITLE_SECONDS = 10;
+
+// The network bug, top right. It comes up on its own schedule rather than with
+// the lower third, because a bug that only ever appeared alongside the titles
+// would read as part of them. First pass is late enough that the video has the
+// screen to itself for a moment. After that it returns every BUG_EVERY_SECONDS
+// for the rest of the song, which is what a network actually did.
+const BUG_DELAY_SECONDS = 20;
+const BUG_SECONDS = 12;
+const BUG_EVERY_SECONDS = 75;
+
+// Nothing runs longer than this, so the schedule stops here rather than
+// leaving timers behind on a song that was skipped.
+const BUG_MAX_MINUTES = 12;
 
 // How often to check the queue, in milliseconds.
 const POLL_MS = 4000;
@@ -1347,6 +1389,7 @@ function showVideoStage(on, title, artist, by, album, label) {
 
   clearTitleTimers();
   el("vcard").classList.remove("up");
+  el("bug").classList.remove("up");
 
   if (!on) return;
 
@@ -1365,6 +1408,30 @@ function showVideoStage(on, title, artist, by, album, label) {
   titleTimers.push(setTimeout(() => {
     el("vcard").classList.remove("up");
   }, (TITLE_DELAY_SECONDS + TITLE_SECONDS) * 1000));
+
+  scheduleBug();
+}
+
+
+/**
+ * Lays out every appearance of the network bug for this song in one go.
+ *
+ * The timers go into titleTimers deliberately: showVideoStage already clears
+ * that list on every song change, so the bug inherits the same cancellation
+ * and there is only one place to get it wrong.
+ */
+function scheduleBug() {
+  const runFor = BUG_MAX_MINUTES * 60;
+
+  for (let at = BUG_DELAY_SECONDS; at < runFor; at += BUG_EVERY_SECONDS) {
+    titleTimers.push(setTimeout(() => {
+      el("bug").classList.add("up");
+    }, at * 1000));
+
+    titleTimers.push(setTimeout(() => {
+      el("bug").classList.remove("up");
+    }, (at + BUG_SECONDS) * 1000));
+  }
 }
 
 
