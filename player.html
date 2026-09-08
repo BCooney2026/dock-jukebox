@@ -102,6 +102,53 @@
     border: 0;
   }
 
+  /* ---- Reactions ---------------------------------------------------------
+     Somebody taps an emoji on their phone and it drifts up the right-hand side
+     of the picture with their name under it. Over the video, not instead of
+     it: this is the one thing here that never interrupts anything.
+
+     Right side on purpose. The bug owns the bottom left and the lower third
+     owns the bottom, so the right edge is the only column with nothing
+     permanent in it, and the up-next rail is not on screen mid-song. */
+  #reactions {
+    position: fixed;
+    inset: 0;
+    z-index: 8;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .reaction {
+    position: absolute;
+    text-align: center;
+    line-height: 1;
+    will-change: transform, opacity;
+    animation: reactionFloat 4200ms cubic-bezier(0.25, 0.6, 0.4, 1) forwards;
+  }
+  .reaction .face {
+    font-size: clamp(30px, 6.5vh, 78px);
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.75));
+  }
+  .reaction .who {
+    margin-top: 0.4vh;
+    font-family: 'Bebas Neue', system-ui, sans-serif;
+    font-size: clamp(11px, 1.9vh, 24px);
+    letter-spacing: 0.12em;
+    color: #fff;
+    opacity: 0.75;
+    text-shadow: 0 2px 5px rgba(0,0,0,0.9);
+  }
+
+  /* Rises, drifts sideways, and fades out before the top edge so nothing is
+     ever seen to clip. */
+  @keyframes reactionFloat {
+    0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
+    12%  { opacity: 1; transform: translate(0, -6vh) scale(1.15); }
+    22%  { transform: translate(2vw, -12vh) scale(1); }
+    60%  { opacity: 1; transform: translate(-1.5vw, -42vh) scale(1); }
+    100% { opacity: 0; transform: translate(1vw, -72vh) scale(0.85); }
+  }
+
   /* ---- Idents -------------------------------------------------------------
      The sting between songs. Three seconds of black, the mark doing something,
      and out. This is what makes the wall read as a channel rather than a video
@@ -1221,6 +1268,7 @@
 <div id="videostage">
   <div id="screen"></div>
   <div id="ytframe"><div id="ytmount"></div></div>
+  <div id="reactions"></div>
   <div id="ident">
     <canvas id="identfx"></canvas>
     <img id="identmark" src="cp-music-tv.png" alt="">
@@ -2993,6 +3041,78 @@ function tone(at, from, to, seconds, level, shape) {
 }
 
 
+// ---------------------------------------------------------------------------
+// Reactions
+//
+// They arrive on the queue answer the player already asks for every few
+// seconds, so there is no second poll and nothing extra to keep alive.
+// ---------------------------------------------------------------------------
+
+// The newest reaction already shown. Everything after it is new. Timestamps
+// come from the API rather than this machine, so a clock that is a few seconds
+// out cannot hide reactions or replay them.
+let lastReactionAt = 0;
+
+
+/**
+ * Floats anything new up the screen.
+ *
+ * On the very first queue answer the timestamp is simply noted and nothing is
+ * shown, because otherwise a player starting up would replay the whole of the
+ * last twenty seconds at once.
+ */
+function paintReactions(list) {
+  if (!Array.isArray(list) || list.length === 0) return;
+
+  const newest = Math.max.apply(null, list.map(item => item.t || 0));
+
+  if (lastReactionAt === 0) {
+    lastReactionAt = newest;
+    return;
+  }
+
+  list
+    .filter(item => (item.t || 0) > lastReactionAt)
+    .forEach((item, index) => {
+      // Staggered, so three people tapping at once reads as three reactions
+      // rather than one clump.
+      setTimeout(() => floatReaction(item.e, item.by), index * 220);
+    });
+
+  lastReactionAt = Math.max(lastReactionAt, newest);
+}
+
+
+/** One emoji rising up the right-hand side. */
+function floatReaction(emoji, who) {
+  const layer = el("reactions");
+  if (!layer || !emoji) return;
+
+  const node = document.createElement("div");
+  node.className = "reaction";
+
+  // Scattered across the right third, and started below the bottom edge so it
+  // rises into frame rather than appearing in it.
+  node.style.left = (66 + Math.random() * 26) + "%";
+  node.style.top = "92%";
+
+  const face = document.createElement("div");
+  face.className = "face";
+  face.textContent = emoji;
+
+  const name = document.createElement("div");
+  name.className = "who";
+  name.textContent = who || "";
+
+  node.append(face, name);
+  layer.appendChild(node);
+
+  // Removed when its animation ends rather than on a timer, so a slow machine
+  // cannot leave half-faded emoji stacked on the wall.
+  node.addEventListener("animationend", () => node.remove());
+}
+
+
 /** Asks the API whose day it is, and starts again when the date rolls over. */
 async function loadCelebrations() {
   try {
@@ -3618,6 +3738,8 @@ let ticking = false;
 async function tickOnce() {
   const state = await api("getQueue");
   if (!state || !state.ok) return;
+
+  paintReactions(state.reactions);
 
   // The clean-content list is owned by the API, so the player always uses
   // whatever the server is currently enforcing rather than its own copy.
