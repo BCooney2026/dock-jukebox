@@ -3472,6 +3472,25 @@ async function reportHome() {
 // ---------------------------------------------------------------------------
 
 async function tick() {
+  // A tick can now take seconds rather than milliseconds, because a song start
+  // holds for an ident or a celebration. setInterval does not care: it fires
+  // again regardless, and a second tick arriving mid-start read the OLD track's
+  // state as if it belonged to the new one, marked a request played before it
+  // had made a sound, and started a second song on top of it.
+  if (ticking) return;
+  ticking = true;
+
+  try {
+    await tickOnce();
+  } finally {
+    ticking = false;
+  }
+}
+
+let ticking = false;
+
+
+async function tickOnce() {
   const state = await api("getQueue");
   if (!state || !state.ok) return;
 
@@ -3552,7 +3571,7 @@ async function tick() {
  * the video lookup and the explicit filter, and the two would drift apart
  * every time one of them was changed.
  */
-async function playSong(songId, title, artist, by, dedication) {
+async function playSong(songId, title, artist, by, dedication, holdUntil) {
   currentSongId = songId;
 
   const details = await songDetails(songId);
@@ -3570,6 +3589,15 @@ async function playSong(songId, title, artist, by, dedication) {
   const backup = (!video && PLAY_VIDEOS && ytApiReady)
     ? await youtubeVideoFor(songId, title, artist, details.durationMs)
     : null;
+
+  // Everything above this line is lookups, and everything below it makes a
+  // noise. holdUntil is the moment the ident or celebration finishes, so the
+  // waiting happens HERE, after the slow part rather than before it. If the
+  // lookups took longer than the sting there is nothing left to wait for.
+  if (holdUntil) {
+    const left = holdUntil - Date.now();
+    if (left > 0) await new Promise(resolve => setTimeout(resolve, left));
+  }
 
   if (video) {
     await music.setQueue({ musicVideo: String(video.id), startPlaying: true });
@@ -3608,6 +3636,14 @@ async function playRequest(item) {
   trackFinished = false;
   startedAt = Date.now();
   playbackError = null;
+
+  // Silence BEFORE the ident, not after. Without this the previous track kept
+  // playing underneath the sting, which sounded like two songs at once and,
+  // worse, let the old track's ending be mistaken for the new one's.
+  music.stop();
+  stopYouTube();
+  showVideoStage(false);
+
   await api("markPlaying", { queueId: item.QueueID });
 
   // Between songs, never over one. Whatever plays here holds the picture and
@@ -3627,7 +3663,12 @@ async function playRequest(item) {
 
   if (!wait) wait = playIdent();
 
-  if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+  // The lookups run DURING the sting rather than after it. Apple's catalog
+  // call and the video search take a second or two, and adding that to three
+  // seconds of ident is what made a request feel like it took forever to
+  // start. playSong holds at the last possible moment instead, so by the time
+  // the ident clears the song is ready to go.
+  const holdUntil = Date.now() + wait;
 
   try {
     // Google Sheets hands back numeric IDs as numbers. MusicKit only accepts
@@ -3637,8 +3678,14 @@ async function playRequest(item) {
       item.Title,
       item.Artist,
       item.RequestedBy,
-      item.Dedication
+      item.Dedication,
+      holdUntil
     );
+
+    // The clock for "this would not start" begins when the song does, not when
+    // the ident did.
+    startedAt = Date.now();
+    heardItPlaying = false;
   } catch (error) {
     playbackError = error && error.message ? error.message : String(error);
     debugLine("PLAYBACK FAILED: " + playbackError);
