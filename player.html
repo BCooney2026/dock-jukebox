@@ -3441,7 +3441,26 @@ function sized(template, pixels) {
 // Startup
 // ---------------------------------------------------------------------------
 
-document.addEventListener("musickitloaded", async () => {
+/**
+ * Sets MusicKit up, however it happens to arrive.
+ *
+ * THIS IS A RACE AND WE LOSE IT ABOUT HALF THE TIME.
+ * The MusicKit script tag is async and sits above this code, so on a machine
+ * where it is already cached it can load, run, and fire "musickitloaded"
+ * BEFORE this file has registered a listener for it. The listener then never
+ * fires, music stays null, and the page eventually reports that Apple's
+ * library did not load when in fact it loaded perfectly and quickly.
+ *
+ * A slow machine, or a cold cache, or an incognito window loads it late enough
+ * that the listener is ready in time and everything works. That is why this
+ * only ever broke on one machine and looked like a network fault.
+ *
+ * So: if MusicKit is already here, use it. If not, wait for the event. Never
+ * only the second one.
+ */
+async function setUpMusicKit() {
+  if (music) return;
+
   try {
     music = await MusicKit.configure({
       developerToken: DEVELOPER_TOKEN,
@@ -3463,13 +3482,29 @@ document.addEventListener("musickitloaded", async () => {
   startMessage("");
   setStatus("ready to start");
   tryAutoStart();
-});
+}
+
+
+// Both routes in, because either can be the one that happens.
+if (window.MusicKit) {
+  setUpMusicKit();
+} else {
+  document.addEventListener("musickitloaded", setUpMusicKit);
+}
 
 
 // If Apple's library never loads at all, nothing above ever runs and the page
 // simply waits. Say so instead.
 setTimeout(() => {
   if (music || musicKitError) return;
+
+  // One last try before blaming anything. If the library is sitting right
+  // there, we simply missed its announcement, and this recovers it.
+  if (window.MusicKit) {
+    debugLine("MusicKit was already loaded, its event was missed. Recovering.");
+    setUpMusicKit();
+    return;
+  }
 
   musicKitError = "Apple's player did not load. Check this machine can reach "
     + "js-cdn.music.apple.com, then reload.";
