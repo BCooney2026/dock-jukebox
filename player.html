@@ -1536,6 +1536,12 @@ const QUEUE_MAX_ROWS = 6;
 // How often to check the queue, in milliseconds.
 const POLL_MS = 4000;
 
+// How many times to try a call before saying it failed, and how long to wait
+// between. Apps Script's first request after an idle spell is the one that
+// falls over.
+const API_ATTEMPTS = 2;
+const API_RETRY_MS = 700;
+
 // How long to wait for a song to actually start before giving up on it.
 const START_TIMEOUT_MS = 20000;
 
@@ -1663,16 +1669,30 @@ async function api(action, params) {
   // replays the first answer forever and never sees a new request.
   url.searchParams.set("nocache", Date.now() + "" + Math.random());
 
-  try {
-    const response = await fetch(url, { cache: "no-store" });
-    const body = await response.text();
-    debugLine(action + " -> HTTP " + response.status + " " + safeToShow(body));
-    return JSON.parse(body);
-  } catch (error) {
-    debugLine(action + " -> FAILED " + error.message);
-    setStatus("cannot reach the queue");
-    return null;
+  // Tried twice before giving up. Apps Script goes cold when nobody has used it
+  // for a while, and the first request after that can be slow enough to fail
+  // outright. One retry turns "cannot reach the queue" on startup into a pause
+  // nobody notices, and costs nothing when the first attempt works.
+  for (let attempt = 1; attempt <= API_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      const body = await response.text();
+      debugLine(action + " -> HTTP " + response.status + " " + safeToShow(body));
+      return JSON.parse(body);
+    } catch (error) {
+      debugLine(action + " -> attempt " + attempt + " failed: " + error.message);
+
+      if (attempt < API_ATTEMPTS) {
+        await new Promise(resolve => setTimeout(resolve, API_RETRY_MS));
+        continue;
+      }
+
+      setStatus("cannot reach the queue");
+      return null;
+    }
   }
+
+  return null;
 }
 
 
@@ -2135,6 +2155,7 @@ function buildYouTubePlayer() {
             && (currentQueueId || houseTrack)) {
           trackFinished = true;
           debugLine("youtube video finished, advancing");
+          tick();
         }
       },
       onError: event => {
@@ -3776,6 +3797,12 @@ function watchPlaybackState() {
     if (done && (currentQueueId || houseTrack)) {
       trackFinished = true;
       debugLine("track finished, advancing");
+
+      // Look NOW rather than waiting for the next poll. The poll is every four
+      // seconds, so a song ending a moment after one tick left the screen
+      // blank for nearly that whole gap before the player even noticed. tick
+      // refuses to run on top of itself, so calling it here is safe.
+      tick();
     }
   });
 }
