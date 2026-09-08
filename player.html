@@ -2325,6 +2325,15 @@ function clearTitleTimers() {
 }
 
 function showVideoStage(on, title, artist, by, album, label, dedication) {
+  // Whatever was covering the screen comes off HERE, because this is the
+  // moment the picture underneath becomes correct.
+  //
+  // The ident used to lift on its own countdown, which expired while setQueue
+  // was still working, so there was a beat of the old song's screen between
+  // the sting ending and the new video arriving. Tying it to this call instead
+  // means the two happen in the same frame.
+  clearIdent();
+
   el("videostage").classList.toggle("on", on);
 
   clearTitleTimers();
@@ -2897,10 +2906,6 @@ const IDENTS = [
 // Play an ident before one song in every this many. 1 is every song, which is
 // what a music channel actually did. Raise it if it ever wears thin.
 //
-// How long past its own length an ident may linger before being cleared
-// anyway. Only reached when a song fails to start.
-const IDENT_BACKSTOP_MS = 6000;
-
 // SET THIS TO 0 TO TURN IDENTS OFF ENTIRELY. One line, no other change, and
 // the jukebox goes straight from song to song as it did before they existed.
 // It is here because idents introduced three seconds between stopping one
@@ -2946,31 +2951,24 @@ function playIdent() {
 
   identSound(pick.sound);
 
-  // A backstop only. Normally dismissInterstitial takes this down the moment
-  // the next song is actually on screen. This exists so a song that never
-  // starts cannot leave the sting up forever.
-  identTimers.push(setTimeout(clearIdent, pick.ms + IDENT_BACKSTOP_MS));
+  // A backstop. showVideoStage normally takes this down the moment the next
+  // song is on screen; this only matters if that never happens.
+  identTimers.push(setTimeout(clearIdent, pick.ms + 6000));
 
   return pick.ms;
-}
-
-
-/**
- * Takes down whatever full-screen thing is covering the video, whichever it
- * was. Called the moment real playback starts.
- */
-function dismissInterstitial() {
-  clearIdent();
-
-  const card = el("celebrate");
-  if (card) card.classList.remove("on");
-  stopFireworks();
 }
 
 
 /** Takes the ident off screen and stops anything it started. */
 function clearIdent() {
   const card = el("ident");
+
+  // Nothing to do if no ident is up, and that matters now that showVideoStage
+  // calls this on every single song. Without the guard, an ordinary song
+  // change would call stopFireworks, which is shared with the celebration
+  // card, and could cut a birthday's fireworks short from the other side of
+  // the file.
+  if (!card || !card.classList.contains("on")) return;
 
   identTimers.forEach(clearTimeout);
   identTimers = [];
@@ -3927,13 +3925,6 @@ async function playSong(songId, title, artist, by, dedication, holdUntil) {
   // noise. holdUntil is the moment the ident or celebration finishes, so the
   // waiting happens HERE, after the slow part rather than before it. If the
   // lookups took longer than the sting there is nothing left to wait for.
-  // Painted BEFORE the wait, not after. The sting is covering the screen right
-  // now, and underneath it the artwork and title still belong to the song that
-  // just finished. Anything that shows through for a frame should already be
-  // the new song.
-  paintNowPlaying(title, artist, by);
-  paintArtwork(sized(details.artwork, 900));
-
   if (holdUntil) {
     const left = holdUntil - Date.now();
     if (left > 0) await new Promise(resolve => setTimeout(resolve, left));
@@ -3956,18 +3947,12 @@ async function playSong(songId, title, artist, by, dedication, holdUntil) {
     setStatus("no video, playing the track", true);
   }
 
-  // The picture is now correct, so whatever was covering it can go.
-  //
-  // Driven by playback starting rather than by a timer. Both the ident and the
-  // celebration card used to lift the instant their own countdown finished,
-  // which was the same moment setQueue was still working, so the screen showed
-  // the old song's artwork for a beat before the new video appeared. That is
-  // the sloppy hand-off between songs.
-  dismissInterstitial();
-
   // Playing for real, so track endings count again. Cleared here rather than
   // back in the caller so the watcher is live from the first note.
   startingSong = false;
+
+  paintNowPlaying(title, artist, by);
+  paintArtwork(sized(details.artwork, 900));
 
   // Reported back so the house rotation can name the station without erasing
   // which of the three paths actually ran. That status line is the fastest way
@@ -3988,14 +3973,26 @@ async function playRequest(item) {
   playbackError = null;
   startingSong = true;
 
-  // ORDER MATTERS HERE, AND IT IS NOT OBVIOUS.
+  // Silence BEFORE the ident, not after. Without this the previous track kept
+  // playing underneath the sting, which sounded like two songs at once and,
+  // worse, let the old track's ending be mistaken for the new one's.
   //
-  // Cover the screen FIRST, then silence, then talk to the sheet. Done the
-  // other way round, hiding the video stage exposes the artwork screen
-  // underneath, which still belongs to the song that just finished, and it
-  // sits there uncovered for the length of a network round trip to
-  // markPlaying. That flash of the previous song's no-video screen is exactly
-  // what a sloppy hand-off between songs looks like.
+  // NOTE WHAT IS NOT HERE: showVideoStage(false).
+  //
+  // Hiding the stage reveals the artwork screen underneath, and that screen
+  // still holds the title and cover of the song that just finished, because
+  // paintNowPlaying does not run until the new song is ready. So the room saw
+  // the previous song's no-video screen flash up in the middle of the change.
+  //
+  // The stage is left exactly as it is. playSong sets it correctly when the
+  // new song starts, and the sting covers the gap in between.
+  music.stop();
+  stopYouTube();
+
+  await api("markPlaying", { queueId: item.QueueID });
+
+  // Between songs, never over one. Whatever plays here holds the picture and
+  // the song starts after it, so nothing ever talks over somebody's request.
   //
   // A celebration wins when there is one. Two full-screen interruptions back
   // to back would be a pause rather than punctuation, so the ident stands down
@@ -4010,15 +4007,6 @@ async function playRequest(item) {
   });
 
   if (!wait) wait = playIdent();
-
-  // Now silence, behind whatever just went up. The previous track playing on
-  // underneath the sting sounded like two songs at once and let the old
-  // track's ending be mistaken for the new one's.
-  music.stop();
-  stopYouTube();
-  showVideoStage(false);
-
-  await api("markPlaying", { queueId: item.QueueID });
 
   // The lookups run DURING the sting rather than after it. Apple's catalog
   // call and the video search take a second or two, and adding that to three
