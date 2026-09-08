@@ -1498,9 +1498,18 @@ let live = false;
 const MUSICKIT_WAIT_MS = 12000;
 
 // How long to wait for Apple's sign-in window before deciding it is not going
-// to appear. Signing in takes seconds when it works; a minute means it never
-// opened.
-const AUTHORIZE_TIMEOUT_MS = 60000;
+// to appear.
+//
+// EIGHT SECONDS, NOT SIXTY. The window either opens at once or it is being
+// blocked; there is no in between. This was a minute, and a minute of a
+// disabled button reading "Starting" is indistinguishable from a broken
+// jukebox, so the message explaining the problem was never seen because
+// nobody waits that long in front of a dead screen.
+const AUTHORIZE_TIMEOUT_MS = 8000;
+
+// The same idea for the two unlock steps. They take under a second when they
+// work at all.
+const UNLOCK_TIMEOUT_MS = 6000;
 let musicKitError = "";
 
 // True from the moment we stop one song to the moment the next is actually
@@ -3318,6 +3327,23 @@ setTimeout(() => {
 }, MUSICKIT_WAIT_MS);
 
 
+/**
+ * Waits for a promise, but not forever.
+ *
+ * Everything on the start path can hang rather than fail: a blocked popup, a
+ * refused play, a player that never reports ready. A hang gives the room a
+ * dead button and gives us nothing to work from, so each step gets a limit and
+ * a sentence explaining what did not happen.
+ */
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((resolve, reject) =>
+      setTimeout(() => reject(new Error(message)), ms))
+  ]);
+}
+
+
 el("startbtn").addEventListener("click", async () => {
   // WITHOUT THIS THE BUTTON JUST STOPS. If Apple's library has not loaded,
   // music is null, the next line throws reading isAuthorized, and the button
@@ -3346,20 +3372,31 @@ el("startbtn").addEventListener("click", async () => {
   // to everybody like a button that cannot be clicked. A rejection we can talk
   // about beats a wait we cannot.
   if (!music.isAuthorized) {
-    await Promise.race([
+    // Said before the wait, not after it. Whatever happens next, the screen is
+    // never silently doing nothing.
+    setStatus("Signing in to Apple Music, a window should open");
+
+    await withTimeout(
       music.authorize(),
-      new Promise((resolve, reject) => setTimeout(
-        () => reject(new Error(
-          "Apple's sign-in window did not open. Kiosk and full screen block "
-          + "it. Leave kiosk, press start once to sign in, then go back."
-        )),
-        AUTHORIZE_TIMEOUT_MS
-      ))
-    ]);
+      AUTHORIZE_TIMEOUT_MS,
+      "Apple's sign-in window did not open. Kiosk and full screen block it. "
+      + "Leave kiosk, press start once to sign in, then go back."
+    );
   }
 
-    await unlockAudio();
-    await unlockYouTube();
+    setStatus("Starting playback");
+
+    // TIME LIMITED, ALL OF IT. Neither of these throws when playback is
+    // refused: they simply never come back. The button then sits disabled
+    // reading "Starting" forever, which from in front of the screen is
+    // indistinguishable from a button that cannot be pressed. Every await on
+    // this path now either finishes or says why it did not.
+    await withTimeout(unlockAudio(), UNLOCK_TIMEOUT_MS,
+      "The browser would not let audio start. Reload and press start again.");
+
+    await withTimeout(unlockYouTube(), UNLOCK_TIMEOUT_MS,
+      "The video player would not start. Reload and press start again.");
+
     goLive(false);
   } catch (error) {
     // Anything at all going wrong here used to leave a disabled button reading
