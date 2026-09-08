@@ -1496,6 +1496,11 @@ let live = false;
 // How long to wait for Apple's library before deciding it is not coming, and
 // what went wrong if it did not. Both exist so a failure says something.
 const MUSICKIT_WAIT_MS = 12000;
+
+// How long to wait for Apple's sign-in window before deciding it is not going
+// to appear. Signing in takes seconds when it works; a minute means it never
+// opened.
+const AUTHORIZE_TIMEOUT_MS = 60000;
 let musicKitError = "";
 
 // True from the moment we stop one song to the moment the next is actually
@@ -3334,8 +3339,23 @@ el("startbtn").addEventListener("click", async () => {
   // authorize() opens a window, which only a real click is allowed to do. This
   // is the one part of startup that can never happen automatically, and it is
   // why a brand new browser always needs the button once.
+  //
+  // TIMED OUT ON PURPOSE. In kiosk or full-screen mode the browser refuses to
+  // open that window, and Apple's promise then neither resolves nor rejects.
+  // It simply hangs, so the button stays disabled reading "Starting" and looks
+  // to everybody like a button that cannot be clicked. A rejection we can talk
+  // about beats a wait we cannot.
   if (!music.isAuthorized) {
-    await music.authorize();
+    await Promise.race([
+      music.authorize(),
+      new Promise((resolve, reject) => setTimeout(
+        () => reject(new Error(
+          "Apple's sign-in window did not open. Kiosk and full screen block "
+          + "it. Leave kiosk, press start once to sign in, then go back."
+        )),
+        AUTHORIZE_TIMEOUT_MS
+      ))
+    ]);
   }
 
     await unlockAudio();
@@ -3345,7 +3365,7 @@ el("startbtn").addEventListener("click", async () => {
     // Anything at all going wrong here used to leave a disabled button reading
     // "Starting" and no way back short of a reload.
     debugLine("start failed: " + (error.message || error));
-    setStatus("Could not start: " + (error.message || error));
+    setStatus(error.message || String(error));
     el("startbtn").disabled = false;
     el("startbtn").textContent = "Start the jukebox";
   }
