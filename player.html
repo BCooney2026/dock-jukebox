@@ -1227,7 +1227,21 @@
   }
   #start .wordmark img { width: clamp(240px, 34vh, 520px); }
   #start p { color: var(--dim); max-width: 34ch; line-height: 1.55; margin: 0; }
-  #start button {
+  /* Anything that goes wrong before the jukebox is running is said HERE.
+   #status lives inside the player behind this overlay, so every message
+   written there while the start screen is up is invisible: the screen looks
+   like a dead button and nothing else. That cost an evening. */
+#startmsg {
+  margin-top: 2.4vh;
+  max-width: 46ch;
+  min-height: 1.2em;
+  font-size: clamp(13px, 2vh, 20px);
+  line-height: 1.45;
+  color: var(--amber);
+  text-align: center;
+}
+
+#start button {
     font-family: 'Bebas Neue', system-ui, sans-serif;
     font-size: clamp(22px, 3.4vh, 34px);
     letter-spacing: 0.12em;
@@ -1340,6 +1354,7 @@
   <div class="wordmark"><img src="cp-music-tv.png" alt="Cooney Provisions Video Jukebox"></div>
   <p>Press start, then leave this open. The screen can sleep. Closing this page stops the music.</p>
   <button id="startbtn">Start the jukebox</button>
+  <div id="startmsg"></div>
 </div>
 
 <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js" data-web-components async></script>
@@ -1615,6 +1630,21 @@ function setStatus(text, live) {
   el("status").textContent = text;
   el("lamp").classList.toggle("live", !!live);
 }
+
+/**
+ * Says something on the start screen itself.
+ *
+ * Everything on the start path reports through here as well as through
+ * setStatus, because setStatus writes into the player underneath and cannot be
+ * read while the start overlay is covering it.
+ */
+function startMessage(text) {
+  const box = el("startmsg");
+  if (box) box.textContent = text || "";
+  setStatus(text);
+  if (text) debugLine(text);
+}
+
 
 /** Prints one line to the diagnostics strip. Hidden unless ?debug=1. */
 function debugLine(text) {
@@ -3422,7 +3452,7 @@ document.addEventListener("musickitloaded", async () => {
     // Apple will not accept. Said out loud rather than left as a dead button.
     musicKitError = "Apple would not accept the developer token. "
       + "Re-run make_music_token.py and paste the new one in.";
-    setStatus(musicKitError);
+    startMessage(musicKitError);
     debugLine("MusicKit.configure failed: " + (error.message || error));
     return;
   }
@@ -3430,6 +3460,7 @@ document.addEventListener("musickitloaded", async () => {
   // Try to start on our own. On a browser that allows unattended playback this
   // is the whole startup and nobody ever sees the button. On one that does not,
   // it fails harmlessly and the button is still sitting there.
+  startMessage("");
   setStatus("ready to start");
   tryAutoStart();
 });
@@ -3442,7 +3473,7 @@ setTimeout(() => {
 
   musicKitError = "Apple's player did not load. Check this machine can reach "
     + "js-cdn.music.apple.com, then reload.";
-  setStatus(musicKitError);
+  startMessage(musicKitError);
   debugLine("MusicKit never loaded after " + (MUSICKIT_WAIT_MS / 1000) + "s");
 }, MUSICKIT_WAIT_MS);
 
@@ -3470,7 +3501,7 @@ el("startbtn").addEventListener("click", async () => {
   // sits on "Starting" forever with nothing on screen explaining why. That is
   // a five minute problem presented as a dead jukebox.
   if (!music) {
-    setStatus(musicKitError || "Apple's player has not loaded yet. Give it a "
+    startMessage(musicKitError || "Apple's player has not loaded yet. Give it a "
       + "moment, then press start again.");
     el("startbtn").disabled = false;
     el("startbtn").textContent = "Start the jukebox";
@@ -3494,7 +3525,7 @@ el("startbtn").addEventListener("click", async () => {
   if (!music.isAuthorized) {
     // Said before the wait, not after it. Whatever happens next, the screen is
     // never silently doing nothing.
-    setStatus("Signing in to Apple Music, a window should open");
+    startMessage("Signing in to Apple Music, a window should open");
 
     await withTimeout(
       music.authorize(),
@@ -3504,7 +3535,7 @@ el("startbtn").addEventListener("click", async () => {
     );
   }
 
-    setStatus("Starting playback");
+    startMessage("Starting playback");
 
     // TIME LIMITED, ALL OF IT. Neither of these throws when playback is
     // refused: they simply never come back. The button then sits disabled
@@ -3522,7 +3553,7 @@ el("startbtn").addEventListener("click", async () => {
     // Anything at all going wrong here used to leave a disabled button reading
     // "Starting" and no way back short of a reload.
     debugLine("start failed: " + (error.message || error));
-    setStatus(error.message || String(error));
+    startMessage(error.message || String(error));
     el("startbtn").disabled = false;
     el("startbtn").textContent = "Start the jukebox";
   }
