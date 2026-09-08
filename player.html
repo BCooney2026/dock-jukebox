@@ -153,7 +153,7 @@
     color: var(--amber);
     text-shadow: 0 0 3vh rgba(255,166,43,0.6);
     opacity: 0;
-    animation: celebKicker 600ms cubic-bezier(0.2, 1.3, 0.4, 1) 200ms forwards;
+    animation: celebKicker 500ms cubic-bezier(0.2, 1.3, 0.4, 1) 120ms forwards;
   }
 
   /* The big one. Deliberately enormous: at 20vh a long nickname still fits
@@ -167,8 +167,8 @@
     text-transform: uppercase;
     text-shadow: 0 0 6vh rgba(255,166,43,0.55), 4px 4px 0 rgba(0,0,0,0.9);
     opacity: 0;
-    animation: celebWho 800ms cubic-bezier(0.15, 1.4, 0.3, 1) 420ms forwards,
-               celebPulse 1400ms ease-in-out 1300ms infinite;
+    animation: celebWho 700ms cubic-bezier(0.15, 1.4, 0.3, 1) 300ms forwards,
+               celebPulse 1400ms ease-in-out 1050ms infinite;
   }
 
   #celebrate .years {
@@ -178,7 +178,7 @@
     color: var(--amber);
     text-shadow: 0 0 3vh rgba(255,166,43,0.5);
     opacity: 0;
-    animation: celebYears 700ms cubic-bezier(0.2, 1.3, 0.4, 1) 1000ms forwards;
+    animation: celebYears 600ms cubic-bezier(0.2, 1.3, 0.4, 1) 750ms forwards;
   }
   #celebrate .years:empty { display: none; }
 
@@ -189,7 +189,7 @@
   #celebrate .request {
     margin-top: 1.6vh;
     opacity: 0;
-    animation: celebYears 700ms cubic-bezier(0.2, 1.3, 0.4, 1) 1500ms forwards;
+    animation: celebYears 600ms cubic-bezier(0.2, 1.3, 0.4, 1) 1050ms forwards;
   }
   #celebrate .request:empty { display: none; }
 
@@ -233,7 +233,7 @@
     margin-top: 2vh;
     max-width: 82vw;
     opacity: 0;
-    animation: celebNote 750ms cubic-bezier(0.15, 1.35, 0.3, 1) 1900ms forwards;
+    animation: celebNote 650ms cubic-bezier(0.15, 1.35, 0.3, 1) 1350ms forwards;
   }
   #celebrate .note:empty { display: none; }
 
@@ -250,7 +250,7 @@
     width: 22vw;
     max-width: 460px;
     opacity: 0;
-    animation: celebMark 800ms ease-out 1500ms forwards;
+    animation: celebMark 650ms ease-out 1100ms forwards;
   }
 
   @keyframes celebKicker {
@@ -2179,7 +2179,7 @@ let bugListening = false;
 // How long the card holds, and how often the list is refreshed. The refresh
 // exists so a player left running for weeks notices the date changing without
 // anybody reloading it.
-const CELEBRATE_SECONDS = 13;
+const CELEBRATE_SECONDS = 9;
 const CELEBRATE_REFRESH_MS = 60 * 60 * 1000;
 
 // Today's people. Nobody is "shown" in turn any more: a card only exists when
@@ -2196,7 +2196,7 @@ const CELEBRATE_COLOURS = ["#ffa62b", "#ff3d8b", "#2ec5c1", "#ffe066", "#ffffff"
 // How often a shell goes up while the card is on screen, and how many sparks
 // each one throws. Sparks are the expensive part: 90 is lively on a Mac and
 // still fine on the weakest thing likely to run this.
-const FIREWORK_EVERY_MS = 520;
+const FIREWORK_EVERY_MS = 420;
 const FIREWORK_SPARKS = 90;
 
 // The animation loop's handle, so a card that is dismissed early takes its
@@ -2368,6 +2368,72 @@ function celebAudio() {
 }
 
 
+/**
+ * The output everything here connects to, instead of the speakers directly.
+ *
+ * A compressor acting as a limiter. Measured without one, a single burst
+ * landing on the fanfare peaked at 0.98, and bursts arrive every 420ms, so two
+ * together would have clipped. Clipping on a warehouse PA is not a quiet
+ * problem: it is a nasty crackle at the loudest moment of the loudest thing
+ * this system does.
+ *
+ * The ratio is high and the threshold low, so it barely touches anything
+ * normal and simply refuses to let the stack get out of hand.
+ */
+function celebBus() {
+  const ctx = celebAudio();
+  if (!ctx) return null;
+
+  if (!celebBus.node) {
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -8;
+    limiter.knee.value = 4;
+    limiter.ratio.value = 14;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.16;
+
+    // To the speakers, not through celebBus(). This line was briefly written
+    // as connect(celebBus()) by a careless bulk edit, which wired the limiter
+    // to itself and made the entire celebration silent. Nothing errored.
+    limiter.connect(ctx.destination);
+    celebBus.node = limiter;
+  }
+
+  return celebBus.node;
+}
+
+
+/** A short burst of noise through a bandpass, used as crackle and as a hit. */
+function noiseHit(at, seconds, low, high, level) {
+  const ctx = celebAudio();
+  if (!ctx) return;
+
+  const length = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < length; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+  }
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(low, at);
+  filter.frequency.exponentialRampToValueAtTime(high, at + seconds);
+  filter.Q.value = 0.8;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(level, at);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+
+  source.connect(filter).connect(gain).connect(celebBus());
+  source.start(at);
+}
+
+
 /** The rising whistle of a shell going up. */
 function whistle() {
   const ctx = celebAudio();
@@ -2379,16 +2445,16 @@ function whistle() {
     const gain = ctx.createGain();
 
     osc.type = "sine";
-    osc.frequency.setValueAtTime(420, now);
-    osc.frequency.exponentialRampToValueAtTime(1500, now + 0.55);
+    osc.frequency.setValueAtTime(380, now);
+    osc.frequency.exponentialRampToValueAtTime(1800, now + 0.5);
 
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.05, now + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    gain.gain.linearRampToValueAtTime(0.06, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
 
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(celebBus());
     osc.start(now);
-    osc.stop(now + 0.62);
+    osc.stop(now + 0.57);
   } catch (error) {
     // Silence is survivable.
   }
@@ -2396,11 +2462,13 @@ function whistle() {
 
 
 /**
- * The bang.
+ * The bang, and the crackle after it.
  *
- * White noise through a lowpass that sweeps down, which is what gives an
- * explosion its shape: bright at the crack, then all low rumble. A plain noise
- * burst sounds like static instead.
+ * Three parts, because one is not enough. A lowpass sweeping down over white
+ * noise gives the crack; a sine dropping from 90Hz to 30Hz gives the chest
+ * thump you feel through a warehouse PA; then a scatter of tiny bandpassed
+ * pops gives the tail you actually recognise as a firework rather than a door
+ * slamming.
  */
 function boom() {
   const ctx = celebAudio();
@@ -2408,12 +2476,13 @@ function boom() {
 
   try {
     const now = ctx.currentTime;
-    const length = Math.floor(ctx.sampleRate * 0.9);
+
+    // The crack.
+    const length = Math.floor(ctx.sampleRate * 1.1);
     const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
     const data = buffer.getChannelData(0);
-
     for (let i = 0; i < length; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.2);
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.0);
     }
 
     const source = ctx.createBufferSource();
@@ -2421,45 +2490,135 @@ function boom() {
 
     const filter = ctx.createBiquadFilter();
     filter.type = "lowpass";
-    filter.frequency.setValueAtTime(4200, now);
-    filter.frequency.exponentialRampToValueAtTime(180, now + 0.55);
+    filter.frequency.setValueAtTime(6000, now);
+    filter.frequency.exponentialRampToValueAtTime(150, now + 0.6);
 
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.55, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.85);
+    gain.gain.setValueAtTime(0.65, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
 
-    source.connect(filter).connect(gain).connect(ctx.destination);
+    source.connect(filter).connect(gain).connect(celebBus());
     source.start(now);
+
+    // The thump.
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(90, now);
+    sub.frequency.exponentialRampToValueAtTime(30, now + 0.45);
+    subGain.gain.setValueAtTime(0.5, now);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    sub.connect(subGain).connect(celebBus());
+    sub.start(now);
+    sub.stop(now + 0.65);
+
+    // The crackle.
+    for (let i = 0; i < 14; i++) {
+      noiseHit(now + 0.12 + Math.random() * 0.8, 0.05,
+        2500 + Math.random() * 2500, 900, 0.10);
+    }
   } catch (error) {
     // Silence is survivable.
   }
 }
 
 
-/** A short major fanfare under the name landing. */
+/**
+ * An air horn.
+ *
+ * Two detuned sawtooth voices a minor third apart, around 311 and 370 Hz,
+ * which is roughly where a real truck horn sits. On a dock full of drivers it
+ * is the single most recognisable noise available and it costs nothing to
+ * generate.
+ */
+function airhorn(at) {
+  const ctx = celebAudio();
+  if (!ctx) return;
+
+  try {
+    const start = at || ctx.currentTime;
+
+    [311, 370].forEach(hz => {
+      // Two oscillators per note, slightly apart, which is what gives a horn
+      // its beating, ragged edge instead of sounding like a test tone.
+      [-3, 3].forEach(detune => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(hz, start);
+        osc.detune.setValueAtTime(detune * 4, start);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.13, start + 0.05);
+        gain.gain.setValueAtTime(0.13, start + 0.62);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.95);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.value = 2600;
+
+        osc.connect(filter).connect(gain).connect(celebBus());
+        osc.start(start);
+        osc.stop(start + 1.0);
+      });
+    });
+  } catch (error) {
+    // Silence is survivable.
+  }
+}
+
+
+/**
+ * The full arrival: a riser, an air horn, and a brass fanfare over the top.
+ *
+ * Timed to the name landing. The riser builds into it, the horn hits with it,
+ * and the fanfare climbs out the other side, so the loudest moment of the
+ * audio is the same moment as the loudest moment on screen.
+ */
 function fanfare() {
   const ctx = celebAudio();
   if (!ctx) return;
 
   try {
     const now = ctx.currentTime;
-    // A major triad plus the octave, arriving one after another rather than
-    // together, which is what makes it read as a fanfare and not a chord.
-    [[392, 0], [494, 0.10], [587, 0.20], [784, 0.30]].forEach(pair => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const at = now + pair[1];
 
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(pair[0], at);
+    // Riser: noise sweeping upward into the hit.
+    noiseHit(now, 0.55, 300, 7000, 0.14);
 
-      gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.linearRampToValueAtTime(0.16, at + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 1.1);
+    const horn = now + 0.42;
+    airhorn(horn);
 
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(at);
-      osc.stop(at + 1.2);
+    // Crash, to mark the impact.
+    noiseHit(horn, 1.1, 7000, 2000, 0.22);
+
+    // Brass. A rising run into a held chord, detuned in pairs so it sounds
+    // like several instruments rather than one synthesiser.
+    const run = [392, 523, 659, 784];
+    run.forEach((hz, i) => {
+      const at = horn + i * 0.085;
+      [0, 7].forEach(detune => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(hz, at);
+        osc.detune.setValueAtTime(detune, at);
+
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(1200, at);
+        filter.frequency.exponentialRampToValueAtTime(4200, at + 0.12);
+
+        const last = i === run.length - 1;
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.linearRampToValueAtTime(0.11, at + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + (last ? 1.5 : 0.3));
+
+        osc.connect(filter).connect(gain).connect(celebBus());
+        osc.start(at);
+        osc.stop(at + (last ? 1.6 : 0.4));
+      });
     });
   } catch (error) {
     // Silence is survivable.
@@ -2569,7 +2728,7 @@ function playCelebration(song) {
   requestAnimationFrame(() => startFireworks(CELEBRATE_SECONDS));
 
   // Timed to the name landing at 420ms rather than to the card appearing.
-  setTimeout(fanfare, 420);
+  setTimeout(fanfare, 300);
 
   setTimeout(() => {
     card.classList.remove("on");
