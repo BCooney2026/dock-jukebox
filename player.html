@@ -1493,6 +1493,11 @@ let trackFinished = false;
 // button cannot both start it.
 let live = false;
 
+// How long to wait for Apple's library before deciding it is not coming, and
+// what went wrong if it did not. Both exist so a failure says something.
+const MUSICKIT_WAIT_MS = 12000;
+let musicKitError = "";
+
 // True from the moment we stop one song to the moment the next is actually
 // playing. Everything that watches for a track ending ignores that window.
 let startingSong = false;
@@ -3273,10 +3278,20 @@ function sized(template, pixels) {
 // ---------------------------------------------------------------------------
 
 document.addEventListener("musickitloaded", async () => {
-  music = await MusicKit.configure({
-    developerToken: DEVELOPER_TOKEN,
-    app: { name: "Cooney Provisions Video Jukebox", build: "1.0.0" }
-  });
+  try {
+    music = await MusicKit.configure({
+      developerToken: DEVELOPER_TOKEN,
+      app: { name: "Cooney Provisions Video Jukebox", build: "1.0.0" }
+    });
+  } catch (error) {
+    // Almost always the developer token: expired, or edited into something
+    // Apple will not accept. Said out loud rather than left as a dead button.
+    musicKitError = "Apple would not accept the developer token. "
+      + "Re-run make_music_token.py and paste the new one in.";
+    setStatus(musicKitError);
+    debugLine("MusicKit.configure failed: " + (error.message || error));
+    return;
+  }
 
   // Try to start on our own. On a browser that allows unattended playback this
   // is the whole startup and nobody ever sees the button. On one that does not,
@@ -3286,9 +3301,35 @@ document.addEventListener("musickitloaded", async () => {
 });
 
 
+// If Apple's library never loads at all, nothing above ever runs and the page
+// simply waits. Say so instead.
+setTimeout(() => {
+  if (music || musicKitError) return;
+
+  musicKitError = "Apple's player did not load. Check this machine can reach "
+    + "js-cdn.music.apple.com, then reload.";
+  setStatus(musicKitError);
+  debugLine("MusicKit never loaded after " + (MUSICKIT_WAIT_MS / 1000) + "s");
+}, MUSICKIT_WAIT_MS);
+
+
 el("startbtn").addEventListener("click", async () => {
+  // WITHOUT THIS THE BUTTON JUST STOPS. If Apple's library has not loaded,
+  // music is null, the next line throws reading isAuthorized, and the button
+  // sits on "Starting" forever with nothing on screen explaining why. That is
+  // a five minute problem presented as a dead jukebox.
+  if (!music) {
+    setStatus(musicKitError || "Apple's player has not loaded yet. Give it a "
+      + "moment, then press start again.");
+    el("startbtn").disabled = false;
+    el("startbtn").textContent = "Start the jukebox";
+    return;
+  }
+
   el("startbtn").disabled = true;
   el("startbtn").textContent = "Starting";
+
+  try {
 
   // authorize() opens a window, which only a real click is allowed to do. This
   // is the one part of startup that can never happen automatically, and it is
@@ -3297,9 +3338,17 @@ el("startbtn").addEventListener("click", async () => {
     await music.authorize();
   }
 
-  await unlockAudio();
-  await unlockYouTube();
-  goLive(false);
+    await unlockAudio();
+    await unlockYouTube();
+    goLive(false);
+  } catch (error) {
+    // Anything at all going wrong here used to leave a disabled button reading
+    // "Starting" and no way back short of a reload.
+    debugLine("start failed: " + (error.message || error));
+    setStatus("Could not start: " + (error.message || error));
+    el("startbtn").disabled = false;
+    el("startbtn").textContent = "Start the jukebox";
+  }
 });
 
 
