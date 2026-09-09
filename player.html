@@ -3212,10 +3212,15 @@ function tone(at, from, to, seconds, level, shape) {
 let lastReactionAt = 0;
 
 // How often to look for new reactions, how far apart to launch them, and the
-// most one batch may release. The cap is not about the server, it is about the
-// screen: past a dozen at a time you cannot see the video at all.
-const REACTION_POLL_MS = 1200;
-const REACTION_GAP_MS = 130;
+// most one batch may release.
+//
+// The poll is as fast as is worth doing. Apps Script takes a few hundred
+// milliseconds to answer at the best of times, so asking more often than this
+// just queues requests behind each other and makes it slower, not faster.
+// getReactions is a cache read with none of the queue's work behind it, which
+// is why it can be asked this often at all.
+const REACTION_POLL_MS = 600;
+const REACTION_GAP_MS = 90;
 const REACTION_BURST_MAX = 12;
 
 
@@ -3278,10 +3283,16 @@ function floatReaction(emoji, who) {
   const node = document.createElement("div");
   node.className = "reaction";
 
-  // Scattered across the right third, and started below the bottom edge so it
-  // rises into frame rather than appearing in it.
-  node.style.left = (66 + Math.random() * 26) + "%";
-  node.style.top = "92%";
+  // Across the full width, and started low so each one rises into frame rather
+  // than appearing in it. The launch height varies a little so a burst does
+  // not come up as a straight line.
+  //
+  // This used to be confined to the right third, because the network bug lives
+  // bottom left and the lower third owns the bottom edge. That was a design
+  // choice, not a constraint: an emoji crossing the titles for half a second
+  // is fine, and reactions filling the screen is the entire point of them.
+  node.style.left = (4 + Math.random() * 88) + "%";
+  node.style.top = (86 + Math.random() * 10) + "%";
 
   const face = document.createElement("div");
   face.className = "face";
