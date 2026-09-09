@@ -3211,6 +3211,13 @@ function tone(at, from, to, seconds, level, shape) {
 // out cannot hide reactions or replay them.
 let lastReactionAt = 0;
 
+// How often to look for new reactions, how far apart to launch them, and the
+// most one batch may release. The cap is not about the server, it is about the
+// screen: past a dozen at a time you cannot see the video at all.
+const REACTION_POLL_MS = 1200;
+const REACTION_GAP_MS = 130;
+const REACTION_BURST_MAX = 12;
+
 
 /**
  * Floats anything new up the screen.
@@ -3229,15 +3236,37 @@ function paintReactions(list) {
     return;
   }
 
+  let slot = 0;
+
   list
     .filter(item => (item.t || 0) > lastReactionAt)
-    .forEach((item, index) => {
-      // Staggered, so three people tapping at once reads as three reactions
-      // rather than one clump.
-      setTimeout(() => floatReaction(item.e, item.by), index * 220);
+    .forEach(item => {
+      // One entry can carry a dozen taps, because the phone batches them.
+      // They go up as a stream rather than all at once: a burst of ten reads
+      // as somebody leaning on the button, which is exactly what happened.
+      const many = Math.min(Math.max(Number(item.n) || 1, 1), REACTION_BURST_MAX);
+
+      for (let i = 0; i < many; i++) {
+        setTimeout(() => floatReaction(item.e, item.by), slot * REACTION_GAP_MS);
+        slot++;
+      }
     });
 
   lastReactionAt = Math.max(lastReactionAt, newest);
+}
+
+
+/**
+ * The reactions-only poll.
+ *
+ * Separate from the queue poll and much faster, because these are the one
+ * thing on the wall where lateness is the whole failure. Four seconds behind a
+ * tap is not a reaction, it is a delayed report of one. getReactions is a cache
+ * read on the server with none of the queue's work behind it.
+ */
+async function pollReactions() {
+  const answer = await api("getReactions", {});
+  if (answer && answer.ok) paintReactions(answer.reactions);
 }
 
 
@@ -3861,6 +3890,7 @@ function begin() {
   reportHome();
   loadCelebrations();
   setInterval(loadCelebrations, CELEBRATE_REFRESH_MS);
+  setInterval(pollReactions, REACTION_POLL_MS);
   tick();
   setInterval(tick, POLL_MS);
   setInterval(paintProgress, 1000);
@@ -3945,8 +3975,6 @@ let ticking = false;
 async function tickOnce() {
   const state = await api("getQueue");
   if (!state || !state.ok) return;
-
-  paintReactions(state.reactions);
 
   // The clean-content list is owned by the API, so the player always uses
   // whatever the server is currently enforcing rather than its own copy.
