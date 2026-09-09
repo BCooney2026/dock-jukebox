@@ -1892,7 +1892,10 @@ async function youtubeDetails(ids) {
  * not get the official video, it just guarantees the album cover wins.
  */
 async function pickVideo(candidates, title, artist, durationMs) {
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    debugLine("youtube: the search itself returned nothing");
+    return null;
+  }
 
   const ids = candidates.map(item => item.id.videoId).join(",");
   const details = await youtubeDetails(ids);
@@ -1912,17 +1915,31 @@ async function pickVideo(candidates, title, artist, durationMs) {
     const channel = video.snippet.channelTitle;
     const seconds = secondsFrom(video.contentDetails.duration);
 
-    if (!video.status.embeddable) continue;
-    if (isTopicChannel(channel)) continue;
-    if (isFoul(name)) continue;
-    if (looksWrong(name)) continue;
-    if (seconds > ceiling) continue;
+    // WHY A CANDIDATE WAS TURNED AWAY, IN THE DEBUG STRIP.
+    //
+    // Without this, a song that plays as audio gives you one line saying
+    // "nothing suitable" and no way to tell a genuine rejection from a rule
+    // that is too strict. Working out why one song came up audio-only meant
+    // guessing at eight rules in the dark. Now it says.
+    const reject = why => {
+      debugLine("  rejected: " + name.slice(0, 52) + "  [" + channel + "]  "
+        + why);
+    };
+
+    if (!video.status.embeddable) { reject("embedding off"); continue; }
+    if (isTopicChannel(channel)) { reject("auto-generated topic channel"); continue; }
+    if (isFoul(name)) { reject("banned word in the title"); continue; }
+    if (looksWrong(name)) { reject("title says it is not the video"); continue; }
+    if (seconds > ceiling) { reject("too long, " + seconds + "s vs " + ceiling + "s"); continue; }
 
     // The title has to actually name the song, and the artist has to appear
     // somewhere, either in the title or in the channel. That is what keeps a
     // stranger's unrelated upload out without demanding an official channel.
-    if (!mentions(name, bareTitle(title))) continue;
-    if (!mentions(name, artist) && !sameArtist(channel, artist)) continue;
+    if (!mentions(name, bareTitle(title))) { reject("title does not name the song"); continue; }
+    if (!mentions(name, artist) && !sameArtist(channel, artist)) {
+      reject("artist nowhere in the title or channel");
+      continue;
+    }
 
     // Proof that this IS the official video, rather than merely the absence of
     // anything suspicious. Plenty of songs never had a video, and for those
@@ -1934,9 +1951,15 @@ async function pickVideo(candidates, title, artist, durationMs) {
     // Songs that fail this play as audio, which is the intended behaviour.
     // Genuine official videos that only exist as fan uploads go in
     // VIDEO_OVERRIDES at the top of this file.
-    if (!sameArtist(channel, artist) && !saysOfficial(name)) continue;
+    if (!sameArtist(channel, artist) && !saysOfficial(name)) {
+      reject("not the artist's channel and the title never says official");
+      continue;
+    }
 
     const score = scoreVideo(video, artist, seconds, songSeconds);
+    debugLine("  passed: " + name.slice(0, 52) + "  [" + channel + "]  score "
+      + score);
+
     if (score > bestScore) {
       bestScore = score;
       best = video.id;
@@ -2071,7 +2094,7 @@ function secondsFrom(iso) {
 // the picking rules change, or when a run of bad answers needs clearing out.
 // Went to 4 because a spell of broken builds cached "no video" against songs
 // that plainly have one.
-const PICKER_VERSION = 4;
+const PICKER_VERSION = 5;
 
 // How long a NO is trusted before the song is looked at again.
 //
