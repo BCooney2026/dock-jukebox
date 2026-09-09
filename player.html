@@ -1824,7 +1824,12 @@ async function youtubeVideoFor(songId, title, artist, durationMs) {
     return pinned || null;
   }
 
-  const remembered = rememberedVideo(songId);
+  // Held so the error handler can forget this exact entry if the video turns
+  // out to be dead, without needing the title passed to it from three files
+  // away.
+  lastVideoKey = videoKey(songId, title, artist);
+
+  const remembered = rememberedVideo(lastVideoKey);
   if (remembered !== undefined) {
     debugLine("youtube: remembered " + (remembered || "nothing suitable"));
     return remembered;
@@ -1834,7 +1839,7 @@ async function youtubeVideoFor(songId, title, artist, durationMs) {
     const found = await youtubeSearch(title + " " + artist + " official video");
     const chosen = await pickVideo(found, title, artist, durationMs);
 
-    rememberVideo(songId, chosen);
+    rememberVideo(lastVideoKey, chosen);
     debugLine("youtube: " + (chosen || "nothing suitable"));
     return chosen;
   } catch (error) {
@@ -2106,6 +2111,32 @@ const PICKER_VERSION = 5;
 // almost nothing against a hundred searches a day.
 const NEGATIVE_DAYS = 7;
 
+// The key of the decision made for the song now playing, so a dead video can
+// be forgotten from the error handler.
+let lastVideoKey = "";
+
+/**
+ * The key a decision is filed under.
+ *
+ * THE TITLE IS PART OF IT, AND THAT IS THE POINT.
+ * The key used to be the Apple song ID alone. Then Sheets turned the title
+ * "3AM" into a date, the picker searched YouTube for
+ * "1899-12-30T08:00:00.000Z Matchbox Twenty", found nothing, and filed a no
+ * against that song ID. Correcting the title changed nothing, because the ID
+ * had not changed, so the song stayed videoless behind a cached answer to a
+ * question nobody would ask again.
+ *
+ * A remembered answer is only about the exact title and artist that were
+ * searched. Put those in the key and a corrected title looks like a new
+ * question, which is exactly what it is. Every song poisoned that way fixes
+ * itself the next time it is played.
+ */
+function videoKey(songId, title, artist) {
+  return "yt" + PICKER_VERSION + ":" + songId + ":"
+    + squash(String(title || "") + String(artist || ""));
+}
+
+
 /**
  * What we last decided about this song.
  *
@@ -2113,9 +2144,9 @@ const NEGATIVE_DAYS = 7;
  * meaning nothing is known and it should be looked up. An expired no comes
  * back as undefined, which is the whole point: the song gets another chance.
  */
-function rememberedVideo(songId) {
+function rememberedVideo(key) {
   try {
-    const stored = localStorage.getItem("yt" + PICKER_VERSION + ":" + songId);
+    const stored = localStorage.getItem(key);
     if (stored === null) return undefined;
 
     if (stored.indexOf("none") !== 0) return stored;
@@ -2133,12 +2164,9 @@ function rememberedVideo(songId) {
 }
 
 
-function rememberVideo(songId, videoId) {
+function rememberVideo(key, videoId) {
   try {
-    localStorage.setItem(
-      "yt" + PICKER_VERSION + ":" + songId,
-      videoId || ("none:" + Date.now())
-    );
+    localStorage.setItem(key, videoId || ("none:" + Date.now()));
   } catch (error) {
     // A full or disabled store only means the song gets looked up again.
   }
@@ -2161,12 +2189,12 @@ const GONE_FOR_GOOD = [2, 100, 101, 150];
  * future request for the song would stall on a failed load before dropping to
  * audio. Forgetting it means the next request quietly finds a live one.
  */
-function forgetIfGone(songId, errorCode) {
-  if (!songId) return;
+function forgetIfGone(errorCode) {
+  if (!lastVideoKey) return;
   if (GONE_FOR_GOOD.indexOf(errorCode) === -1) return;
 
   try {
-    localStorage.removeItem("yt" + PICKER_VERSION + ":" + songId);
+    localStorage.removeItem(lastVideoKey);
     debugLine("forgot the dead video for this song, will look again next time");
   } catch (error) {
     // Nothing to do. The worst case is it gets looked up again anyway.
@@ -2220,7 +2248,7 @@ function buildYouTubePlayer() {
           return;
         }
         debugLine("youtube error " + event.data + ", playing the audio instead");
-        forgetIfGone(currentSongId, event.data);
+        forgetIfGone(event.data);
         fallBackToAudio();
       }
     }
