@@ -1431,7 +1431,8 @@ const YOUTUBE_KEY = "AIzaSyD-owKBRGqDnUYVNMYFC1Ard3yCXvM7vKo";
 // uploaded by fans, so they cannot pass. Pin those here.
 const VIDEO_OVERRIDES = {
   // "1714905027": "ZyaK3jo4Sl4"   // Punk Rock Girl, the real 1988 promo
-  "302057926": "N2FPQvwhSDY"       // Jungle Love, The Time, 1984
+  "302057926": "N2FPQvwhSDY",      // Jungle Love, The Time, 1984
+  "580695852": "C-Naa1HXeDQ"       // 3AM, Matchbox Twenty, 1997
 };
 
 // The video the YouTube frame is parked on before anything is requested. It is
@@ -3532,6 +3533,13 @@ async function songDetails(songId) {
       album: attributes.albumName || "",
       label: label,
 
+      // Apple's own spelling of the song and the act. The sheet's copy passes
+      // through Google Sheets, which reinterprets anything that looks like a
+      // date or a time, so "3AM" arrives as 1899-12-30T08:00:00.000Z. These
+      // never go near a spreadsheet.
+      name: attributes.name || "",
+      artistName: attributes.artistName || "",
+
       // Everything below is only used to write pop-up nuggets. It costs
       // nothing extra: it all arrives in the same response the lower third
       // already asks for.
@@ -4025,6 +4033,21 @@ async function playSong(songId, title, artist, by, dedication, holdUntil) {
   const video = PLAY_VIDEOS
     ? await musicVideoFor(title, artist)
     : null;
+
+  // APPLE'S TITLE WINS OVER THE SHEET'S.
+  //
+  // The row is written by Apps Script into Google Sheets, which quietly turns
+  // anything resembling a date or a time into one. Matchbox Twenty's "3AM"
+  // came back as 1899-12-30T08:00:00.000Z, so the wall showed that, the video
+  // search looked for it, and the picker correctly rejected the real official
+  // video because its title did not name the song.
+  //
+  // The catalog lookup we already make returns the proper name and artist and
+  // never touches a spreadsheet, so from here on those are used for both the
+  // search and the screen. Fixing the sheet's formatting stops new rows being
+  // mangled; this makes it not matter.
+  if (details.name) title = details.name;
+  if (details.artistName) artist = details.artistName;
 
   // Apple first, always. YouTube is only asked about songs Apple has no
   // video for, and only once the player API has finished loading.
