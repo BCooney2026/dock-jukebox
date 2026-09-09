@@ -2067,13 +2067,43 @@ function secondsFrom(iso) {
  * those rules change and every remembered answer is quietly thrown away, so a
  * song that was matched badly gets a second chance under the new rules.
  */
-const PICKER_VERSION = 3;
+// Bumping this throws away every remembered answer on every player. Do it when
+// the picking rules change, or when a run of bad answers needs clearing out.
+// Went to 4 because a spell of broken builds cached "no video" against songs
+// that plainly have one.
+const PICKER_VERSION = 4;
 
+// How long a NO is trusted before the song is looked at again.
+//
+// A yes is permanent: a video that exists carries on existing. A no is not,
+// because it can mean the search quota ran out, the network hiccupped, or the
+// player was mid-repair, and none of those are facts about the song. Stored
+// without an expiry, one bad evening marked songs as having no video forever
+// and nothing ever reconsidered. Re-checking a handful of songs a week costs
+// almost nothing against a hundred searches a day.
+const NEGATIVE_DAYS = 7;
+
+/**
+ * What we last decided about this song.
+ *
+ * Returns a video ID, or null for a no that is still current, or undefined
+ * meaning nothing is known and it should be looked up. An expired no comes
+ * back as undefined, which is the whole point: the song gets another chance.
+ */
 function rememberedVideo(songId) {
   try {
     const stored = localStorage.getItem("yt" + PICKER_VERSION + ":" + songId);
     if (stored === null) return undefined;
-    return stored === "none" ? null : stored;
+
+    if (stored.indexOf("none") !== 0) return stored;
+
+    // "none:<when>" is the current shape. A bare "none" is from before nos
+    // expired, so it is treated as expired and looked up again.
+    const when = Number(stored.split(":")[1]);
+    if (!when) return undefined;
+
+    const age = Date.now() - when;
+    return age < NEGATIVE_DAYS * 86400000 ? null : undefined;
   } catch (error) {
     return undefined;
   }
@@ -2082,7 +2112,10 @@ function rememberedVideo(songId) {
 
 function rememberVideo(songId, videoId) {
   try {
-    localStorage.setItem("yt" + PICKER_VERSION + ":" + songId, videoId || "none");
+    localStorage.setItem(
+      "yt" + PICKER_VERSION + ":" + songId,
+      videoId || ("none:" + Date.now())
+    );
   } catch (error) {
     // A full or disabled store only means the song gets looked up again.
   }
